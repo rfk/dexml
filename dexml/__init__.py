@@ -32,6 +32,8 @@ class Meta:
 class BaseMetaclass(type):
     """Metaclass for dexml.Base and subclasses."""
 
+    instances = {}
+
     def __new__(mcls,name,bases,attrs):
         super_new = super(BaseMetaclass,mcls).__new__
         cls = super_new(mcls,name,bases,attrs)
@@ -39,7 +41,23 @@ class BaseMetaclass(type):
         parents = [b for b in bases if isinstance(b, BaseMetaclass)]
         if not parents:
             return cls
+        #  Set up the _meta object, inheriting from base classes
         cls._meta = Meta(name,attrs.get("meta"))
+        for base in bases:
+            if not isinstance(b,BaseMetaclass):
+                continue
+            if not hasattr(b,"_meta"):
+                continue
+            for attr in dir(base._meta):
+                if attr.startswith("__"):
+                    continue
+                if getattr(cls._meta,attr) is None:
+                    val = getattr(base._meta,attr)
+                    if val is not None:
+                        setattr(cls._meta,attr,val)
+                
+        #  Create ordered list of field objects, telling each about their
+        #  name and containing class.
         cls._fields = []
         for (name,value) in attrs.iteritems():
             if isinstance(value,fields.Field):
@@ -47,13 +65,24 @@ class BaseMetaclass(type):
                 value.field_class = cls
                 cls._fields.append(value)
         cls._fields.sort(key=lambda f: f._order_counter)
+        #  Register the new class so we can find it by name later on
+        mcls.instances[(cls._meta.namespace,cls._meta.tagname)] = cls
         return cls
+
+    @classmethod
+    def find_class(mcls,tagname,namespace=None):
+        return mcls.instances.get((namespace,tagname))
 
 
 class Base(object):
     """Base class for dexml objects."""
 
     __metaclass__ = BaseMetaclass
+
+    def __init__(self,**kwds):
+        for f in self._fields:
+            val = kwds.get(f.field_name)
+            setattr(self,f.field_name,val)
 
     @classmethod
     def dexml(cls,xml):
@@ -65,17 +94,21 @@ class Base(object):
         self = cls()
         node = self._make_xml_node(xml)
         self._validate_xml_node(node)
-        children = CheckpointIter(node.childNodes)
+        children = CheckpointIter(FilterNodes(node.childNodes))
         for f in self._fields:
             children.checkpoint()
             try:
-                f.parse_node(self,node,children)
+                val = f.parse_node(node,children)
             except StopIteration:
-                raise ParseError("Missing child nodes")
+                if f.required:
+                    raise ParseError("Missing child nodes")
             except ParseError:
                 if f.required:
                     raise
                 children.revert()
+            else:
+                children.commit()
+                setattr(self,f.field_name,val)
         try:
             children.next()
             raise ParseError("Uncomsumed child nodes")
@@ -83,7 +116,7 @@ class Base(object):
             pass
         return self
 
-    def rexml(self,encoding=None,fragment=False):
+    def rexml(self,encoding=None,fragment=False,nsmap=None):
         """Produce xml from this object's instance data.
 
         A unicode string will be returned if any of the objects contain
@@ -94,6 +127,8 @@ class Base(object):
         leading "<?xml>" declaration.  To generate an XML fragment set
         the 'fragment' argument to True.
         """
+        if nsmap is None:
+            nsmap = {}
         data = []
         if not fragment:
             if encoding:
@@ -101,32 +136,55 @@ class Base(object):
                 data.append(s)
             else:
                 data.append('<?xml version="1.0" ?>')
-        data.extend(self._rexml())
+        data.extend(self._rexml(nsmap))
         xml = "".join(data)
         if encoding:
             xml = xml.encode(encoding)
         return xml
 
-    def _rexml(self):
+    def _rexml(self,nsmap):
+        #  Determine opening and closing tags
+        pushed_ns = False
+        if self._meta.namespace:
+            namespace = self._meta.namespace
+            prefix = self._meta.namespace_prefix
+            try:
+                cur_ns = nsmap[prefix]
+            except KeyError:
+                cur_ns = []
+                nsmap[prefix] = cur_ns
+            if prefix:
+                tagname = "%s:%s" % (prefix,self._meta.tagname)
+                open_tag_contents = [tagname]
+                if not cur_ns or cur_ns[0] != namespace:
+                    cur_ns.insert(0,namespace)
+                    pushed_ns = True
+                    open_tag_contents.append('xmlns:%s="%s"'%(prefix,namespace))
+                close_tag_contents = tagname
+            else:
+                open_tag_contents = [self._meta.tagname]
+                if not cur_ns or cur_ns[0] != namespace:
+                    cur_ns.insert(0,namespace)
+                    pushed_ns = True
+                    open_tag_contents.append('xmlns="%s"'%(namespace,))
+                close_tag_contents = self._meta.tagname
+        else:
+            open_tag_contents = [self._meta.tagname] 
+            close_tag_contents = self._meta.tagname
+        # Find the attributes and child nodes
         attrs = []
         children = []
         num = 0
         for f in self._fields:
-            attrs.extend(f.render_attributes(self))
-            children.extend(f.render_children(self))
+            val = getattr(self,f.field_name)
+            attrs.extend(f.render_attributes(self,val))
+            children.extend(f.render_children(self,val,nsmap))
             if len(attrs) + len(children) == num and f.required:
                 raise RenderError("Field '%s' is missing" % (f.field_name,))
-        if self._meta.namespace:
-            if self._meta.namespace_prefix:
-                tagname = "%s:%s" % (self._meta.namespace_prefix,self._meta.tagname)
-                open_tag_contents = [tagname] + attrs
-                open_tag_contents.append('xmlns:%s="%s"'%(self._meta.namespace_prefix,self._meta.namespace))
-            else:
-                open_tag_contents = [self._meta.tagname] + attrs
-                open_tag_contents.append('xmlns="%s"'%(self._meta.namespace,))
-        else:
-            open_tag_contents = [self._meta.tagname] + attrs
-        close_tag_contents = self._meta.tagname
+        #  Actually construct the XML
+        if pushed_ns:
+            nsmap[prefix].pop(0)
+        open_tag_contents.extend(attrs)
         if children:
             yield "<%s>" % (" ".join(open_tag_contents),)
             for chld in children:
@@ -187,21 +245,41 @@ class CheckpointIter:
 
     def __init__(self,seq):
         self._seq = iter(seq)
-        self._tail = []
         self._head = []
+        self._tails = []
 
     def checkpoint(self):
-        self._tail = []
+        self._tails.append([])
+
+    def commit(self):
+        if not self._tails:
+            raise RuntimeError("no checkpoint to commit")
+        self._tails.pop()
 
     def revert(self):
-        self._head = self._tail + self._head
-        self._tail = []
+        if not self._tails:
+            raise RuntimeError("no checkpoint to revert")
+        items = self._tails.pop()
+        self._head = items + self._head
 
     def next(self):
         if self._head:
-            item = self._head.pop(0)
+            item = self._head.pop()
         else:
             item = self._seq.next()
-        self._tail.append(item)
+        if self._tails:
+            self._tails[-1].append(item)
         return item
+
+    def __iter__(self):
+        return self
+
+
+def FilterNodes(nodes):
+    for node in nodes:
+        if node.nodeType == node.ELEMENT_NODE:
+            yield node
+        elif node.nodeType == node.TEXT_NODE:
+            if node.nodeValue.strip():
+                yield node
  
