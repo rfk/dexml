@@ -85,7 +85,7 @@ class Base(object):
             setattr(self,f.field_name,val)
 
     @classmethod
-    def dexml(cls,xml):
+    def parse(cls,xml):
         """Produce an instance of this object from some xml.
 
         The passed xml can be a string, a readble file-like object, or
@@ -116,7 +116,7 @@ class Base(object):
             pass
         return self
 
-    def rexml(self,encoding=None,fragment=False,nsmap=None):
+    def render(self,encoding=None,fragment=False,nsmap=None):
         """Produce xml from this object's instance data.
 
         A unicode string will be returned if any of the objects contain
@@ -136,13 +136,13 @@ class Base(object):
                 data.append(s)
             else:
                 data.append('<?xml version="1.0" ?>')
-        data.extend(self._rexml(nsmap))
+        data.extend(self._render(nsmap))
         xml = "".join(data)
         if encoding:
             xml = xml.encode(encoding)
         return xml
 
-    def _rexml(self,nsmap):
+    def _render(self,nsmap):
         #  Determine opening and closing tags
         pushed_ns = False
         if self._meta.namespace:

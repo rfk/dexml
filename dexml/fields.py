@@ -205,14 +205,14 @@ class Item(Field):
             err = err % (self.type,self.field_name)
             raise dexml.ParseError(err)
         child = children.next()
-        return typeclass.dexml(child)
+        return typeclass.parse(child)
 
     def render_attributes(self,obj,val):
         return []
 
     def render_children(self,obj,val,nsmap):
         if val is not None:
-            yield val.rexml(fragment=True,nsmap=nsmap)
+            yield val.render(fragment=True,nsmap=nsmap)
 
 
 class List(Field):
@@ -275,7 +275,7 @@ class List(Field):
     def render_children(self,obj,items,nsmap):
         if self.minlength is not None and len(items) < self.minlength:
             if self.required:
-                raise dexml.ParseError("Field '%s': not enough items" % (self.field_name,))
+                raise dexml.RenderError("Field '%s': not enough items" % (self.field_name,))
         if self.maxlength is not None and len(items) > self.maxlength:
             raise dexml.RenderError("too many items")
         for item in items:
