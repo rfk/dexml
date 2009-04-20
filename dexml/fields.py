@@ -110,7 +110,13 @@ class Value(Field):
     def render_children(self,obj,val,nsmap):
         if val is not None and val is not self.default and self.tagname:
             val = self.render_value(val)
-            yield "<%s>%s</%s>" % (self.tagname,val,self.tagname)
+            if isinstance(self.tagname,basestring):
+                prefix = self.field_class._meta.namespace_prefix
+                if prefix:
+                    yield "<%s:%s>%s</%s:%s>" % (prefix,self.tagname,val,prefix,self.tagname)
+                else:
+                    yield "<%s>%s</%s>" % (self.tagname,val,self.tagname)
+        # TODO: support (ns,tagname) form
 
     def parse_value(self,val):
         return val
@@ -287,6 +293,12 @@ class XmlNode(Field):
 
     class arguments(Field.arguments):
         tagname = None
+
+    def __set__(self,instance,value):
+        if isinstance(value,basestring):
+            doc = dexml.minidom.parseString(value)
+            value = doc.documentElement
+        return super(XmlNode,self).__set__(instance,value)
 
     def parse_node(self,node,children):
         child = children.next()
