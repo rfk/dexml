@@ -199,9 +199,15 @@ class Base(object):
             ntype = xml.nodeType
         except AttributeError:
             if isinstance(xml,basestring):
-                xml = minidom.parseString(xml)
+                try:
+                    xml = minidom.parseString(xml)
+                except Exception, e:
+                    raise XmlError(e)
             elif hasattr(xml,"read"):
-                xml = minidom.parse(xml)
+                try:
+                    xml = minidom.parse(xml)
+                except Exception, e:
+                    raise XmlError(e)
             else:
                 raise ValueError("Can't convert that to an XML DOM node")
             node = xml.documentElement
