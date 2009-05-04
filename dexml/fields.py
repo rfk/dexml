@@ -370,9 +370,12 @@ class XmlNode(Field):
 
     class arguments(Field.arguments):
         tagname = None
+        encoding = None
 
     def __set__(self,instance,value):
         if isinstance(value,basestring):
+            if isinstance(value,unicode) and self.encoding:
+                value = value.encode(self.encoding)
             doc = dexml.minidom.parseString(value)
             value = doc.documentElement
         return super(XmlNode,self).__set__(instance,value)
