@@ -3,8 +3,18 @@ import dexml
 
 _order_counter = 0
 
+class _AttrBucket:
+    """A simple class used only to hold attributes."""
+    pass
+
+
 class Field(object):
-    """Base class for all dexml Field classes."""
+    """Base class for all dexml Field classes.
+
+    Field classes are responsiblef or parsing and rendering individual
+    components to the XML.  They also act as descriptors on dexml class
+    instances, to get/set the corresponding properties.
+    """
 
     class arguments:
         required = True
@@ -17,14 +27,34 @@ class Field(object):
                 setattr(self,argnm,kwds.get(argnm,getattr(args,argnm)))
         self._order_counter = _order_counter = _order_counter + 1
 
-    def parse_node(self,obj,node,children):
-        raise NotImplementedError
+    def parse_attributes(self,obj,attrs):
+        """Parse any attributes for this field form the given list.
 
-    def render_attributes(self,obj):
-        raise NotImplementedError
+        A list of the unconsumed attributes should be returned.
+        """
+        return attrs
 
-    def render_children(self,obj,nsmap):
-        raise NotImplementedError
+    def parse_child_node(self,obj,node):
+        """Parse data from the given child node.
+
+        If the node is properly passed and no more data will be accepted,
+        return dexml.PARSE_DONE.  If the node is properly parsed and more
+        child nodes can be accepted, retrn dexml.PARSE_MORE.  Any other
+        return value will be taken as a parsing error.
+        """
+        return dexml.PARSE_SKIP
+
+    def parse_done(self,obj):
+        """Finalize parsing for the given object."""
+        pass
+
+    def render_attributes(self,obj,val):
+        """Render any attributes that this field manages."""
+        return []
+
+    def render_children(self,obj,nsmap,val):
+        """Render any child nodes that this field manages."""
+        return []
 
     def __get__(self,instance,owner=None):
         if instance is None:
@@ -36,31 +66,20 @@ class Field(object):
 
     def _check_tagname(self,node,tagname):
         if node.nodeType != node.ELEMENT_NODE:
-            raise dexml.ParseError("Not an element node")
+            return False
         if isinstance(tagname,basestring):
             if node.localName != tagname:
-                raise dexml.ParseError("tag doesn't match: '%s'" % (node.localName,))
+                return False
             if node.namespaceURI:
                 if node.namespaceURI != self.field_class._meta.namespace:
-                    raise dexml.ParseError("namespace doesn't match")
+                    return False
         else:
             (tagns,tagname) = tagname
             if node.localName != tagname:
-                raise dexml.ParseError("tag doesn't match")
+                return False
             if node.namespaceURI != tagns:
-                raise dexml.ParseError("namespace doesn't match")
-
-    def _get_attribute(self,node,attr):
-        if isinstance(attr,basestring):
-            if not node.hasAttribute(attr):
-                raise dexml.ParseError("no such attribute: '%s'" % (attr,))
-            return node.getAttribute(attr)
-        else:
-            (ns,attr) = attr
-            if not node.hasAttributeNS(attr,ns):
-                raise dexml.ParseError("no such attribute: '%s'" % (attr,))
-            return node.getAttributeNS(attr,ns)
-            
+                return False
+        return True
 
 class Value(Field):
 
@@ -89,18 +108,39 @@ class Value(Field):
             return self.default
         return val
 
-    def parse_node(self,node,children):
-        if self.tagname:
-            chld = children.next()
-            self._check_tagname(chld,self.tagname)
-            vals = []
-            for chld2 in chld.childNodes:
-                if chld2.nodeType != chld2.TEXT_NODE:
-                    raise dexml.ParseError("non-text value node")
-                vals.append(chld2.nodeValue)
-            val = "".join(vals)
+    def parse_attributes(self,obj,attrs):
+        if not self.tagname:
+            unused = []
+            attrname = self.attrname
+            if isinstance(attrname,basestring):
+                ns = None
+            else:
+                (ns,attrname) = attrname
+            for attr in attrs:
+                if attr.localName == attrname:
+                    if ns is None or attr.namespaceURI == ns:
+                        self.__set__(obj,self.parse_value(attr.nodeValue))
+                    else:
+                        unused.append(attr)
+                else:
+                    unused.append(attr)
+            return unused
         else:
-            val = self._get_attribute(node,self.attrname)
+            return attrs
+
+    def parse_child_node(self,obj,node):
+        if self.tagname:
+            if not self._check_tagname(node,self.tagname):
+                return dexml.PARSE_SKIP
+            vals = []
+            for child in node.childNodes:
+                if child.nodeType != child.TEXT_NODE:
+                    raise dexml.ParseError("non-text value node")
+                vals.append(child.nodeValue)
+            self.__set__(obj,self.parse_value("".join(vals)))
+            return dexml.PARSE_DONE
+        else:
+            return dexml.PARSE_SKIP
         return self.parse_value(val)
 
     def render_attributes(self,obj,val):
@@ -164,7 +204,7 @@ class Item(Field):
         super(Item,self).__init__(**kwds)
 
     def _get_type(self):
-        return self.__dict__.get("type",self.field_name)
+        return self.__dict__.get("type")
     def _set_type(self,value):
         if value is not None:
             self.__dict__["type"] = value
@@ -204,14 +244,20 @@ class Item(Field):
                 typeclass = ns[typ]
         return typeclass
 
-    def parse_node(self,node,children):
+    def parse_child_node(self,obj,node):
         typeclass = self.typeclass
         if typeclass is None:
             err = "Unknown typeclass '%s' for field '%s'"
             err = err % (self.type,self.field_name)
             raise dexml.ParseError(err)
-        child = children.next()
-        return typeclass.parse(child)
+        try:
+            typeclass.validate_xml_node(node)
+        except dexml.ParseError:
+            return dexml.PARSE_SKIP
+        else:
+            inst = typeclass.parse(node)
+            self.__set__(obj,inst)
+            return dexml.PARSE_DONE
 
     def render_attributes(self,obj,val):
         return []
@@ -234,6 +280,8 @@ class List(Field):
         else:
             kwds["field"] = Item(field,**kwds)
         super(List,self).__init__(**kwds)
+        if not self.minlength:
+            self.required = False
 
     def _get_field(self):
         field = self.__dict__["field"]
@@ -253,30 +301,25 @@ class List(Field):
         self.__set__(instance,[])
         return self.__get__(instance,owner)
 
-    def parse_node(self,node,children):
-        items = []
-        while True:
-            children.checkpoint()
-            try:
-                val = self.field.parse_node(node,children)
-            except dexml.ParseError, e:
-                children.revert()
-                break
-            except StopIteration:
-                break
-            children.commit()
+    def parse_child_node(self,obj,node):
+        tmpobj = _AttrBucket()
+        res = self.field.parse_child_node(tmpobj,node)
+        if res is dexml.PARSE_MORE:
+            raise RuntimeError("items in a list cannot return PARSE_MORE")
+        if res is dexml.PARSE_DONE:
+            items = self.__get__(obj)
+            val = getattr(tmpobj,self.field_name)
             items.append(val)
+            return dexml.PARSE_MORE
+        else:
+            return dexml.PARSE_SKIP
+
+    def parse_done(self,obj):
+        items = self.__get__(obj)
         if self.minlength is not None and len(items) < self.minlength:
-            children.checkpoint()
-            chld = children.next()
-            children.revert()
             raise dexml.ParseError("Field '%s': not enough items" % (self.field_name,))
         if self.maxlength is not None and len(items) > self.maxlength:
-            raise dexml.ParseError("too many items")
-        return items
-
-    def render_attributes(self,obj,val):
-        return []
+            raise dexml.ParseError("Field '%s': too many items" % (self.field_name,))
 
     def render_children(self,obj,items,nsmap):
         if self.minlength is not None and len(items) < self.minlength:
@@ -287,6 +330,39 @@ class List(Field):
         for item in items:
             for data in self.field.render_children(obj,item,nsmap):
                 yield data
+
+
+class Choice(Field):
+    """Accept any one of a given set of Item fields."""
+
+    class arguments(Field.arguments):
+        fields = []
+
+    def __init__(self,*fields,**kwds):
+        real_fields = []
+        for field in fields:
+            if isinstance(field,Item):
+                real_fields.append(field)
+            elif isinstance(field,basestring):
+                real_fields.append(Item(field))
+            else:
+                raise dexml.Error("only Item fields are allowed within a Choice field")
+        kwds["fields"] = real_fields
+        super(Choice,self).__init__(**kwds)
+
+    def parse_child_node(self,obj,node):
+        for field in self.fields:
+            field.field_name = self.field_name
+            res = field.parse_child_node(obj,node)
+            if res is dexml.PARSE_MORE:
+                raise RuntimeError("items in a Choice cannot return PARSE_MORE")
+            if res is dexml.PARSE_DONE:
+                return dexml.PARSE_DONE
+        else:
+            return dexml.PARSE_SKIP
+
+    def render_children(self,obj,item,nsmap):
+        yield item.render(fragment=True,nsmap=nsmap)
 
 
 class XmlNode(Field):
@@ -300,14 +376,11 @@ class XmlNode(Field):
             value = doc.documentElement
         return super(XmlNode,self).__set__(instance,value)
 
-    def parse_node(self,node,children):
-        child = children.next()
-        if self.tagname is None or child.localName == self.tagname:
-            return child
-        raise dexml.ParseError("tag doesn't match XmlNode")
-
-    def render_attributes(self,obj,val):
-        return []
+    def parse_child_node(self,obj,node):
+        if self.tagname is None or node.localName == self.tagname:
+            self.__set__(obj,node)
+            return dexml.PARSE_DONE
+        return dexml.PARSE_SKIP
 
     def render_children(self,obj,val,nsmap):
         yield val.toxml()

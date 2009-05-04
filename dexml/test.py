@@ -6,7 +6,6 @@ from dexml import fields
 
 class TestDexml(unittest.TestCase):
 
-
     def test_base(self):
         """Test operation of a dexml.Base class with no fields."""
         class hello(dexml.Base):
@@ -17,16 +16,20 @@ class TestDexml(unittest.TestCase):
         self.assertTrue(h)
         self.assertRaises(dexml.ParseError,hello.parse,"<Hello />")
         self.assertRaises(dexml.ParseError,hello.parse,"<hllo />")
+        h = hello.parse("<hello>world</hello>")
+        self.assertTrue(h)
+        hello.ignore_unknown_elements = False
         self.assertRaises(dexml.ParseError,hello.parse,"<hello>world</hello>")
+        hello.ignore_unknown_elements = True
         h = hello()
         self.assertEquals(h.render(),'<?xml version="1.0" ?><hello />')
         h = hello()
         self.assertEquals(h.render(fragment=True),"<hello />")
 
-
     def test_namespace(self):
         """Test handling of namespaces."""
         class hello(dexml.Base):
+            ignore_unknown_elements = False
             class meta:
                 namespace = "http://hello.com/"
         # Test parsing

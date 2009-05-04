@@ -20,6 +20,14 @@ class XmlError(Error):
     pass
 
 
+class PARSE_DONE:
+    pass
+class PARSE_MORE:
+    pass
+class PARSE_SKIP:
+    pass
+
+
 class Meta:
     """Class holding meta-information about a class."""
 
@@ -55,7 +63,6 @@ class BaseMetaclass(type):
                     val = getattr(base._meta,attr)
                     if val is not None:
                         setattr(cls._meta,attr,val)
-                
         #  Create ordered list of field objects, telling each about their
         #  name and containing class.
         cls._fields = []
@@ -79,6 +86,8 @@ class Base(object):
 
     __metaclass__ = BaseMetaclass
 
+    ignore_unknown_elements = True
+
     def __init__(self,**kwds):
         for f in self._fields:
             val = kwds.get(f.field_name)
@@ -88,32 +97,61 @@ class Base(object):
     def parse(cls,xml):
         """Produce an instance of this object from some xml.
 
-        The passed xml can be a string, a readble file-like object, or
+        The passed-in xml can be a string, a readable file-like object, or
         a DOM node; we might add support for more types in the future.
         """
         self = cls()
         node = self._make_xml_node(xml)
-        self._validate_xml_node(node)
-        children = CheckpointIter(FilterNodes(node.childNodes))
-        for f in self._fields:
-            children.checkpoint()
-            try:
-                val = f.parse_node(node,children)
-            except StopIteration:
-                if f.required:
-                    raise ParseError("Missing child nodes")
-            except ParseError:
-                if f.required:
-                    raise
-                children.revert()
+        self.validate_xml_node(node)
+        #  Keep track of fields that have successfully parsed something
+        fields_found = []
+        #  Try to consume all the node attributes
+        attrs = node.attributes.values()
+        for field in self._fields:
+            unused_attrs = field.parse_attributes(self,attrs)
+            if len(unused_attrs) < len(attrs):
+                fields_found.append(field)
+            attrs = unused_attrs
+        if attrs and not self.ignore_unknown_elements:
+            for attr in attrs:
+                if not attr.nodeName.startswith("xml"):
+                    err = "unknown attribute: %s" % (attr.name,)
+                    raise ParseError(err)
+        #  Try to consume all child nodes
+        cur_field_idx = 0 
+        for child in node.childNodes:
+            idx = cur_field_idx
+            while idx < len(self._fields):
+                field = self._fields[idx]
+                res = field.parse_child_node(self,child)
+                if res is PARSE_DONE:
+                    if field not in fields_found:
+                        fields_found.append(field)
+                    cur_field_idx = idx + 1
+                    break
+                elif res is PARSE_MORE:
+                    if field not in fields_found:
+                        fields_found.append(field)
+                    cur_field_idx = idx
+                    break
+                else:
+                    idx += 1
             else:
-                children.commit()
-                setattr(self,f.field_name,val)
-        try:
-            children.next()
-            raise ParseError("Uncomsumed child nodes")
-        except StopIteration:
-            pass
+                if not self.ignore_unknown_elements:
+                    if child.nodeType == child.ELEMENT_NODE:
+                        err = "unknown element: %s" % (child.nodeName,)
+                        raise ParseError(err)
+                    elif child.nodeType == child.TEXT_NODE:
+                        if child.nodeValue.strip():
+                            err = "unparsed text node: %s" % (child.nodeValue,)
+                            raise ParseError(err)
+        #  Check that all required fields have been found
+        for field in self._fields:
+            if field.required and field not in fields_found:
+                err = "required field not found: '%s'" % (field.field_name,)
+                raise ParseError(err)
+            field.parse_done(self)
+        #  All done, return the instance so created
         return self
 
     def render(self,encoding=None,fragment=False,nsmap=None):
@@ -126,6 +164,8 @@ class Base(object):
         By default a complete XML document is produced, including the
         leading "<?xml>" declaration.  To generate an XML fragment set
         the 'fragment' argument to True.
+
+        TODO: explain the 'nsmap' argument
         """
         if nsmap is None:
             nsmap = {}
@@ -193,7 +233,8 @@ class Base(object):
         else:
             yield "<%s />" % (" ".join(open_tag_contents),)
 
-    def _make_xml_node(self,xml):
+    @staticmethod
+    def _make_xml_node(xml):
         """Transform a variety of input formats to an XML DOM node."""
         try:
             ntype = xml.nodeType
@@ -218,7 +259,8 @@ class Base(object):
                 node = xml
         return node
 
-    def _validate_xml_node(self,node):
+    @classmethod
+    def validate_xml_node(cls,node):
         """Check that the given xml node is valid for this object.
 
         Here 'valid' means that it is the right tag, in the right
@@ -226,59 +268,24 @@ class Base(object):
         """
         if node.nodeType != node.ELEMENT_NODE:
             err = "Class '%s' got a non-element node"
-            err = err % (self.__class__.__name__,)
+            err = err % (cls.__name__,)
             raise ParseError(err)
-        if node.localName != self._meta.tagname:
+        if node.localName != cls._meta.tagname:
             err = "Class '%s' got tag '%s' (expected '%s')"
-            err = err % (self.__class__.__name__,node.localName,
-                         self._meta.tagname)
+            err = err % (cls.__name__,node.localName,
+                         cls._meta.tagname)
             raise ParseError(err)
-        if self._meta.namespace:
-            if node.namespaceURI != self._meta.namespace:
+        if cls._meta.namespace:
+            if node.namespaceURI != cls._meta.namespace:
                 err = "Class '%s' got namespace '%s' (expected '%s')"
-                err = err % (self.__class__.__name__,node.namespaceURI,
-                             self._meta.namespace)
+                err = err % (cls.__name__,node.namespaceURI,
+                             cls._meta.namespace)
                 raise ParseError(err)
         else:
             if node.namespaceURI:
                 err = "Class '%s' got namespace '%s' (expected no namespace)"
-                err = err % (self.__class__.__name__,node.namespaceURI,)
+                err = err % (cls.__name__,node.namespaceURI,)
                 raise ParseError(err)
-
-
-class CheckpointIter:
-    """Iterator with checkpointing capabilities."""
-
-    def __init__(self,seq):
-        self._seq = iter(seq)
-        self._head = []
-        self._tails = []
-
-    def checkpoint(self):
-        self._tails.append([])
-
-    def commit(self):
-        if not self._tails:
-            raise RuntimeError("no checkpoint to commit")
-        self._tails.pop()
-
-    def revert(self):
-        if not self._tails:
-            raise RuntimeError("no checkpoint to revert")
-        items = self._tails.pop()
-        self._head = items + self._head
-
-    def next(self):
-        if self._head:
-            item = self._head.pop()
-        else:
-            item = self._seq.next()
-        if self._tails:
-            self._tails[-1].append(item)
-        return item
-
-    def __iter__(self):
-        return self
 
 
 def FilterNodes(nodes):
