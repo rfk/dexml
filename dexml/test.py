@@ -170,3 +170,41 @@ class TestDexml(unittest.TestCase):
         self.assertEquals(p.render(fragment=True),'<pets><person name="lozz" age="25" /><pet name="riley" /><pet name="guppy" species="fish" /><note>noted</note></pets>')
 
 
+    def test_choice_field(self):
+        """Test operation of fields.Choice"""
+        class breakfast(dexml.Base):
+            meal = fields.Choice("bacon","cereal")
+        class bacon(dexml.Base):
+            num_rashers = fields.Integer()
+        class cereal(dexml.Base):
+            with_milk = fields.Boolean()
+        # Test parsing
+        b = breakfast.parse("<breakfast><bacon num_rashers='4' /></breakfast>")
+        self.assertEquals(b.meal.num_rashers,4)
+        b = breakfast.parse("<breakfast><cereal with_milk='true' /></breakfast>")
+        self.assertTrue(b.meal.with_milk)
+        self.assertRaises(dexml.ParseError,b.parse,"<breakfast><eggs num='2' /></breakfast>")
+        self.assertRaises(dexml.ParseError,b.parse,"<breakfast />")
+        # Test rendering
+        b = breakfast()
+        b.meal = bacon(num_rashers=1)
+        self.assertEquals(b.render(fragment=True),"<breakfast><bacon num_rashers=\"1\" /></breakfast>")
+
+
+    def test_list_of_choice(self):
+        """Test operation of fields.Choice inside fields.List"""
+        class breakfast(dexml.Base):
+            meals = fields.List(fields.Choice("bacon","cereal"))
+        class bacon(dexml.Base):
+            num_rashers = fields.Integer()
+        class cereal(dexml.Base):
+            with_milk = fields.Boolean()
+        # Test parsing
+        b = breakfast.parse("<breakfast><bacon num_rashers='4' /></breakfast>")
+        self.assertEquals(len(b.meals),1)
+        self.assertEquals(b.meals[0].num_rashers,4)
+        b = breakfast.parse("<breakfast><bacon num_rashers='2' /><cereal with_milk='true' /></breakfast>")
+        self.assertEquals(len(b.meals),2)
+        self.assertEquals(b.meals[0].num_rashers,2)
+        self.assertTrue(b.meals[1].with_milk)
+

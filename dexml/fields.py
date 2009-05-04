@@ -353,6 +353,7 @@ class Choice(Field):
     def parse_child_node(self,obj,node):
         for field in self.fields:
             field.field_name = self.field_name
+            field.field_class = self.field_class
             res = field.parse_child_node(obj,node)
             if res is dexml.PARSE_MORE:
                 raise RuntimeError("items in a Choice cannot return PARSE_MORE")
