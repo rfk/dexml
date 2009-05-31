@@ -17,7 +17,7 @@ AUTHOR = "Ryan Kelly"
 AUTHOR_EMAIL = "ryan@rfk.id.au"
 URL="http://www.rfk.id.au/software/"
 LICENSE = "BSD"
-KEYWORDS = "windows registry"
+KEYWORDS = "xml"
 
 setup(name=NAME,
       version=VERSION,
