@@ -1,6 +1,12 @@
+"""
+
+  dexml.fields:  basic field type definitions for dexml
+
+"""
 
 import dexml
 
+#  Global counter tracking the order in which fields are declared.
 _order_counter = 0
 
 class _AttrBucket:
@@ -11,41 +17,78 @@ class _AttrBucket:
 class Field(object):
     """Base class for all dexml Field classes.
 
-    Field classes are responsiblef or parsing and rendering individual
-    components to the XML.  They also act as descriptors on dexml class
+    Field classes are responsible for parsing and rendering individual
+    components to the XML.  They also act as descriptors on dexml Model
     instances, to get/set the corresponding properties.
+
+    Each field instance will magically be given the following properties:
+
+      * model_class:  the Model subclass to which it is attached
+      * field_name:   the name under which is appears on that class
+
+    The following methods are required for interaction with the parsing
+    and rendering machinery:
+
+      * parse_attributes:    parse info out of XML node attributes
+      * parse_child_node:    parse into out of an XML child node
+      * render_attributes:   render XML for node attributes
+      * render_children:     render XML for child nodes
+      
     """
 
     class arguments:
         required = True
 
     def __init__(self,**kwds):
+        """Default Field constructor.
+
+        This constructor keeps track of the order in which Field instances
+        are created, since this information can have semantic meaning in
+        XML.  It also merges any keyword arguments with the defaults
+        defined on the 'arguments' inner class, and assigned these attributes
+        to the Field instance.
+        """
         global _order_counter
+        self._order_counter = _order_counter = _order_counter + 1
         args = self.__class__.arguments
         for argnm in dir(args):
             if not argnm.startswith("__"):
                 setattr(self,argnm,kwds.get(argnm,getattr(args,argnm)))
-        self._order_counter = _order_counter = _order_counter + 1
 
     def parse_attributes(self,obj,attrs):
-        """Parse any attributes for this field form the given list.
+        """Parse any attributes for this field from the given list.
 
-        A list of the unconsumed attributes should be returned.
+        This method will be called with the Model instance being parsed and
+        a list of attribute nodes from its XML tag.  Any attributes of 
+        interest to this field should be processed, and a list of the unused
+        attribute nodes returned.
         """
         return attrs
 
     def parse_child_node(self,obj,node):
-        """Parse data from the given child node.
+        """Parse a child node for this field.
 
-        If the node is properly passed and no more data will be accepted,
-        return dexml.PARSE_DONE.  If the node is properly parsed and more
-        child nodes can be accepted, retrn dexml.PARSE_MORE.  Any other
-        return value will be taken as a parsing error.
+        This method will be called with the Model instance being parsed and
+        the current child node of that model's XML tag.  There are three
+        options for processing this node:
+
+            * return PARSE_DONE, indicating that it was consumed and this
+              field now has all the necessary data.
+            * return PARSE_MORE, indicating that it was consumed but this
+              field will accept more nodes.
+            * return PARSE_SKIP, indicating that it was not consumed by
+              this field.
+
+        Any other return value will be taken as a parse error.
         """
         return dexml.PARSE_SKIP
 
     def parse_done(self,obj):
-        """Finalize parsing for the given object."""
+        """Finalize parsing for the given object.
+
+        This method is called as a simple indicator that no more data will
+        be forthcoming.  No return value is expected.
+        """
         pass
 
     def render_attributes(self,obj,val):
@@ -71,7 +114,7 @@ class Field(object):
             if node.localName != tagname:
                 return False
             if node.namespaceURI:
-                if node.namespaceURI != self.field_class._meta.namespace:
+                if node.namespaceURI != self.model_class.meta.namespace:
                     return False
         else:
             (tagns,tagname) = tagname
@@ -81,7 +124,32 @@ class Field(object):
                 return False
         return True
 
+
 class Value(Field):
+    """Field subclass that holds a simple scalar value.
+
+    This Field subclass contains the common logic to parse/render simple
+    scalar value fields - fields that don't required any recursive parsing.
+    Individual subclasses should provide the parse_value() and render_value()
+    methods to do type coercion of the value.
+
+    Value fields can also have a default value, specified by the 'default'
+    keyword argument.
+
+    By default, the field maps to an attribute of the model's XML node with
+    the same name as the field declaration.  Consider:
+
+        class MyModel(Model):
+            my_field = fields.Value(default="test")
+
+
+    This corresponds to the XML fragment "<MyModel my_field='test' />".
+    To use a different name specify the 'attrname' kwd argument.  To use
+    a subtag instead of an attribute specify the 'tagname' kwd argument.
+
+    Namespaced attributes or subtags are also supported, by specifying a
+    (namespace,tagname) pair for 'attrname' or 'tagname' respectively.
+    """
 
     class arguments(Field.arguments):
         tagname = None
@@ -109,49 +177,49 @@ class Value(Field):
         return val
 
     def parse_attributes(self,obj,attrs):
-        if not self.tagname:
-            unused = []
-            attrname = self.attrname
-            if isinstance(attrname,basestring):
-                ns = None
-            else:
-                (ns,attrname) = attrname
-            for attr in attrs:
-                if attr.localName == attrname:
-                    if ns is None or attr.namespaceURI == ns:
-                        self.__set__(obj,self.parse_value(attr.nodeValue))
-                    else:
-                        unused.append(attr)
+        #  Bail out if we're attached to a subtag rather than an attr.
+        if self.tagname:
+            return attrs
+        unused = []
+        attrname = self.attrname
+        if isinstance(attrname,basestring):
+            ns = None
+        else:
+            (ns,attrname) = attrname
+        for attr in attrs:
+            if attr.localName == attrname:
+                if ns is None or attr.namespaceURI == ns:
+                    self.__set__(obj,self.parse_value(attr.nodeValue))
                 else:
                     unused.append(attr)
-            return unused
-        else:
-            return attrs
+            else:
+                unused.append(attr)
+        return unused
 
     def parse_child_node(self,obj,node):
-        if self.tagname:
-            if not self._check_tagname(node,self.tagname):
-                return dexml.PARSE_SKIP
-            vals = []
-            for child in node.childNodes:
-                if child.nodeType != child.TEXT_NODE:
-                    raise dexml.ParseError("non-text value node")
-                vals.append(child.nodeValue)
-            self.__set__(obj,self.parse_value("".join(vals)))
-            return dexml.PARSE_DONE
-        else:
+        if not self.tagname:
             return dexml.PARSE_SKIP
-        return self.parse_value(val)
+        if not self._check_tagname(node,self.tagname):
+            return dexml.PARSE_SKIP
+        vals = []
+        #  Merge all text nodes into a single value
+        for child in node.childNodes:
+            if child.nodeType != child.TEXT_NODE:
+                raise dexml.ParseError("non-text value node")
+            vals.append(child.nodeValue)
+        self.__set__(obj,self.parse_value("".join(vals)))
+        return dexml.PARSE_DONE
 
     def render_attributes(self,obj,val):
         if val is not None and val is not self.default and not self.tagname:
             yield '%s="%s"' % (self.attrname,self.render_value(val),)
+        # TODO: support (ns,attrname) form
 
     def render_children(self,obj,val,nsmap):
         if val is not None and val is not self.default and self.tagname:
             val = self.render_value(val)
             if isinstance(self.tagname,basestring):
-                prefix = self.field_class._meta.namespace_prefix
+                prefix = self.model_class.meta.namespace_prefix
                 if prefix:
                     yield "<%s:%s>%s</%s:%s>" % (prefix,self.tagname,val,prefix,self.tagname)
                 else:
@@ -166,27 +234,32 @@ class Value(Field):
 
 
 class String(Value):
-    def parse_value(self,val):
-        return val
+    """Field representing a simple string value."""
+    # actually, the base Value() class will do this automatically.
+    pass
 
 
 class Integer(Value):
+    """Field representing a simple integer value."""
     def parse_value(self,val):
         return int(val)
 
 
 class Float(Value):
+    """Field representing a simple float value."""
     def parse_value(self,val):
         return float(val)
 
 
 class Boolean(Value):
+    """Field representing a simple boolean value.
+
+    The strings corresponding to false are 'no', 'off', 'false' and '0',
+    compared case-insensitively.
+    """
 
     def __init__(self,**kwds):
         super(Boolean,self).__init__(**kwds)
-        if self.tagname is not None:
-            self.required = False
-            self.default = False
 
     def parse_value(self,val):
         if val.lower() in ("no","off","false","0"):
@@ -194,14 +267,20 @@ class Boolean(Value):
         return True
 
 
-class Item(Field):
+class Model(Field):
+    """Field subclass referencing another Model instance.
+
+    This field sublcass allows Models to contain other Models recursively.
+    The first argument to the field constructor must be either a Model
+    class or the name of a Model class.
+    """
 
     class arguments(Field.arguments):
         type = None
 
     def __init__(self,type=None,**kwds):
         kwds["type"] = type
-        super(Item,self).__init__(**kwds)
+        super(Model,self).__init__(**kwds)
 
     def _get_type(self):
         return self.__dict__.get("type")
@@ -220,26 +299,26 @@ class Item(Field):
  
     def _load_typeclass(self):
         typ = self.type
-        if isinstance(typ,dexml.BaseMetaclass):
+        if isinstance(typ,dexml.ModelMetaclass):
             return typ
         if typ is None:
             typ = self.field_name
         typeclass = None
         if isinstance(typ,basestring):
-            if self.field_class._meta.namespace:
-                ns = self.field_class._meta.namespace
-                typeclass = dexml.BaseMetaclass.find_class(typ,ns)
+            if self.model_class.meta.namespace:
+                ns = self.model_class.meta.namespace
+                typeclass = dexml.ModelMetaclass.find_class(typ,ns)
             if typeclass is None:
-                typeclass = dexml.BaseMetaclass.find_class(typ,None)
+                typeclass = dexml.ModelMetaclass.find_class(typ,None)
         else:
             (ns,typ) = typ
-            if isinstance(typ,dexml.BaseMetaclass):
+            if isinstance(typ,dexml.ModelMetaclass):
                 return typ
             if isinstance(ns,basestring):
-                typeclass = dexml.BaseMetaclass.find_class(typ,ns)
+                typeclass = dexml.ModelMetaclass.find_class(typ,ns)
                 if typeclass is None and ns is None:
-                    ns = self.field_class._meta.namespace
-                    typeclass = dexml.BaseMetaclass.find_class(typ,ns)
+                    ns = self.model_class.meta.namespace
+                    typeclass = dexml.ModelMetaclass.find_class(typ,ns)
             else:
                 typeclass = ns[typ]
         return typeclass
@@ -268,6 +347,22 @@ class Item(Field):
 
 
 class List(Field):
+    """Field subclass representing a list of fields.
+
+    This field corresponds to a homogenous list of other fields.  You would
+    declare it like so:
+
+      class MyModel(Model):
+          items = fields.List(fields.String(tagname="item"))
+
+    Corresponding to XML such as:
+
+      <MyModel><item>one</item><item>two</item></MyModel>
+
+
+    The properties 'minlength' and 'maxlength' control the allowable length
+    of the list.
+    """
 
     class arguments(Field.arguments):
         field = None
@@ -278,7 +373,7 @@ class List(Field):
         if isinstance(field,Field):
             kwds["field"] = field
         else:
-            kwds["field"] = Item(field,**kwds)
+            kwds["field"] = Model(field,**kwds)
         super(List,self).__init__(**kwds)
         if not self.minlength:
             self.required = False
@@ -287,8 +382,8 @@ class List(Field):
         field = self.__dict__["field"]
         if not hasattr(field,"field_name"):
             field.field_name = self.field_name
-        if not hasattr(field,"field_class"):
-            field.field_class = self.field_class
+        if not hasattr(field,"model_class"):
+            field.model_class = self.model_class
         return field
     def _set_field(self,field):
         self.__dict__["field"] = field
@@ -333,7 +428,7 @@ class List(Field):
 
 
 class Choice(Field):
-    """Accept any one of a given set of Item fields."""
+    """Field subclass accepting any one of a given set of Model fields."""
 
     class arguments(Field.arguments):
         fields = []
@@ -341,19 +436,19 @@ class Choice(Field):
     def __init__(self,*fields,**kwds):
         real_fields = []
         for field in fields:
-            if isinstance(field,Item):
+            if isinstance(field,Model):
                 real_fields.append(field)
             elif isinstance(field,basestring):
-                real_fields.append(Item(field))
+                real_fields.append(Model(field))
             else:
-                raise dexml.Error("only Item fields are allowed within a Choice field")
+                raise dexml.Error("only Model fields are allowed within a Choice field")
         kwds["fields"] = real_fields
         super(Choice,self).__init__(**kwds)
 
     def parse_child_node(self,obj,node):
         for field in self.fields:
             field.field_name = self.field_name
-            field.field_class = self.field_class
+            field.model_class = self.model_class
             res = field.parse_child_node(obj,node)
             if res is dexml.PARSE_MORE:
                 raise RuntimeError("items in a Choice cannot return PARSE_MORE")

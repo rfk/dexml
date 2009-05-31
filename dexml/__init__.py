@@ -1,103 +1,226 @@
 """
 
-  dexml:  xml processing for people who hate processing xml
+  dexml:  a dead-simple Object-XML mapper for Python
+
+Let's face it: xml is a fact of modern life.  I'd even go so far as to say
+that it's *good* at what is does.  But that doesn't mean it's easy to work
+with and it doesn't mean that we have to like it.  Most of the time, XML
+just needs to get the hell out of the way and let you do some actual work
+instead of writing code to traverse and manipulate yet another DOM.
+
+The dexml module takes the obvious mapping between XML tags and Python objects
+and lets you capture that as cleanly as possible.  Loosely inspired by Django's
+ORM, you write simple class definitions to define the expected structure of
+your XML document.  Like so:
+
+  >>> import dexml
+  >>> from dexml import fields
+  >>> class Person(dexml.Model):
+  ...   name = fields.String()
+  ...   age = fields.Integer(tagname='age')
+
+Then you can parse an XML document into an object like this:
+
+  >>> p = Person.parse("<Person name='Foo McBar'><age>42</age></Person>")
+  >>> p.name
+  u'Foo McBar'
+  >>> p.age
+  42
+
+And you can render an object into an XML document like this:
+
+  >>> p = Person(name="Handsome B. Wonderful",age=36)
+  >>> p.render()
+  '<?xml version="1.0" ?><Person name="Handsome B. Wonderful"><age>36</age></Person>'
+
+Malformed documents will raise a ParseError:
+
+  >>> p = Person.parse("<Person><age>92</age></Person>")
+  Traceback (most recent call last):
+      ...
+  ParseError: required field not found: 'name'
+
+Of course, it gets more interesting when you nest Model definitions, like this:
+
+  >>> class Group(dexml.Model):
+  ...   name = fields.String(attrname="name")
+  ...   members = fields.List(Person)
+  ...
+  >>> g = Group(name="Monty Python")
+  >>> g.members.append(Person(name="John Cleese",age=69))
+  >>> g.members.append(Person(name="Terry Jones",age=67))
+  >>> g.render(fragment=True)
+  '<Group name="Monty Python"><Person name="John Cleese"><age>69</age></Person><Person name="Terry Jones"><age>67</age></Person></Group>'
+
+There's support for XML namespaces, default field values, case-insensitive
+parsing, and more fun stuff.  Check out the documentation on the following
+classes for more details:
+
+  :Model:  the base class for objects that map into XML
+  :Field:  the base class for individual model fields
+  :Meta:   meta-information about how to parse/render a model
 
 """
 
 from xml.dom import minidom
 from dexml import fields
 
+
 class Error(Exception):
+    """Base exception class for the dexml module."""
     pass
 
 class ParseError(Error):
+    """Exception raised when XML could not be parsed into objects."""
     pass
 
 class RenderError(Error):
+    """Exception raised when object could not be rendered into XML."""
     pass
 
 class XmlError(Error):
+    """Exception raised to encapsulate errors from underlying XML parser."""
     pass
 
 
 class PARSE_DONE:
+    """Constant returned by a Field when it has finished parsing."""
     pass
 class PARSE_MORE:
+    """Constant returned by a Field when it wants additional nodes to parse."""
     pass
 class PARSE_SKIP:
+    """Constnt returned by a Field when it cannot parse the given node."""
     pass
 
 
 class Meta:
-    """Class holding meta-information about a class."""
+    """Class holding meta-information about a dexml.Model subclass.
+
+    Each dexml.Model subclass has an attribute 'meta' which is an instance
+    of this class.  That instance holds information about how to model 
+    corresponds to XML, such as its tagname, namespace, and error handling
+    semantics.  You would not ordinarily create an instance of this class;
+    instead let the ModelMetaclass create one automatically.
+
+    These attributes control how the model corresponds to the XML:
+
+        * tagname:  the name of the tag representing this model
+        * namespace:  the XML namespace in which this model lives
+
+    These attributes control parsing/rendering behaviour:
+
+        * namespace_prefix:  the prefix to use for rendering namespaced tags
+        * ignore_unknown_elements:  ignore unknown elements when parsing
+        * case_sensitive:    match tag/attr names case-sensitively
+        * order_sensitive:   match tags strictly in order
+    """
+
+    _defaults = {"tagname":None,
+                 "namespace":None,
+                 "namespace_prefix":None,
+                 "ignore_unknown_elements":True,
+                 "case_sensitive":True,
+                 "order_sensitive":True}
 
     def __init__(self,name,meta):
-        self.namespace = getattr(meta,"namespace",None)
-        self.namespace_prefix = getattr(meta,"namespace_prefix",None)
-        self.tagname = getattr(meta,"tagname",name)
+        for (attr,default) in self._defaults.items():
+            setattr(self,attr,getattr(meta,attr,default))
+        if self.tagname is None:
+            self.tagname = name
 
 
-class BaseMetaclass(type):
-    """Metaclass for dexml.Base and subclasses."""
+class ModelMetaclass(type):
+    """Metaclass for dexml.Model and subclasses.
+
+    This metaclass is responsible for introspecting Model class definitions
+    and setting up appropriate default behaviours.  For example, this metaclass
+    sets a Model's default tagname to be equal to the declared class name.
+    """
 
     instances = {}
 
     def __new__(mcls,name,bases,attrs):
-        super_new = super(BaseMetaclass,mcls).__new__
-        cls = super_new(mcls,name,bases,attrs)
-        #  Don't do anything if it's not a subclass of Base
-        parents = [b for b in bases if isinstance(b, BaseMetaclass)]
+        cls = super(ModelMetaclass,mcls).__new__(mcls,name,bases,attrs)
+        #  Don't do anything if it's not a subclass of Model
+        parents = [b for b in bases if isinstance(b, ModelMetaclass)]
         if not parents:
             return cls
-        #  Set up the _meta object, inheriting from base classes
-        cls._meta = Meta(name,attrs.get("meta"))
+        #  Set up the cls.meta object, inheriting from base classes
+        cls.meta = Meta(name,attrs.get("meta"))
         for base in bases:
-            if not isinstance(b,BaseMetaclass):
+            if not isinstance(b,ModelMetaclass):
                 continue
-            if not hasattr(b,"_meta"):
+            if not hasattr(b,"meta"):
                 continue
-            for attr in dir(base._meta):
-                if attr.startswith("__"):
+            for attr in dir(base.meta):
+                if attr.startswith("_"):
                     continue
-                if getattr(cls._meta,attr) is None:
-                    val = getattr(base._meta,attr)
+                if getattr(cls.meta,attr) is None:
+                    val = getattr(base.meta,attr)
                     if val is not None:
-                        setattr(cls._meta,attr,val)
+                        setattr(cls.meta,attr,val)
         #  Create ordered list of field objects, telling each about their
         #  name and containing class.
         cls._fields = []
         for (name,value) in attrs.iteritems():
             if isinstance(value,fields.Field):
                 value.field_name = name
-                value.field_class = cls
+                value.model_class = cls
                 cls._fields.append(value)
         cls._fields.sort(key=lambda f: f._order_counter)
         #  Register the new class so we can find it by name later on
-        mcls.instances[(cls._meta.namespace,cls._meta.tagname)] = cls
+        mcls.instances[(cls.meta.namespace,cls.meta.tagname)] = cls
         return cls
 
     @classmethod
     def find_class(mcls,tagname,namespace=None):
+        """Find dexml.Model subclass for the given tagname and namespace."""
         return mcls.instances.get((namespace,tagname))
 
 
-class Base(object):
-    """Base class for dexml objects."""
+class Model(object):
+    """Base class for dexml Model objects.
 
-    __metaclass__ = BaseMetaclass
+    Subclasses of Model represent a concrete type of object that can parsed 
+    from or rendered to an XML document.  The mapping to/from XML is controlled
+    by two things:
 
-    ignore_unknown_elements = True
+        * attributes declared on an inner class named 'meta'
+        * fields declared using instances of fields.Field
+
+    Here's a quick example:
+
+        class Person(dexml.Model):
+            # This overrides the default tagname of 'Person'
+            class meta
+                tagname = "person"
+            # This maps to a 'name' attributr on the <person> tag
+            name = fields.String()
+            # This maps to an <age> tag within the <person> tag
+            age = fields.Integer(tagname='age')
+
+    See the 'Meta' class in this module for available meta options, and the
+    'fields' submodule for available field types.
+    """
+
+    __metaclass__ = ModelMetaclass
 
     def __init__(self,**kwds):
+        """Default Model constructor.
+
+        Keyword arguments that correspond to declared fields are processed
+        and assigned to that field.
+        """
         for f in self._fields:
             val = kwds.get(f.field_name)
             setattr(self,f.field_name,val)
 
     @classmethod
     def parse(cls,xml):
-        """Produce an instance of this object from some xml.
+        """Produce an instance of this model from some xml.
 
-        The passed-in xml can be a string, a readable file-like object, or
+        The given xml can be a string, a readable file-like object, or
         a DOM node; we might add support for more types in the future.
         """
         self = cls()
@@ -105,14 +228,14 @@ class Base(object):
         self.validate_xml_node(node)
         #  Keep track of fields that have successfully parsed something
         fields_found = []
-        #  Try to consume all the node attributes
+        #  Try to consume all the node's attributes
         attrs = node.attributes.values()
         for field in self._fields:
             unused_attrs = field.parse_attributes(self,attrs)
             if len(unused_attrs) < len(attrs):
                 fields_found.append(field)
             attrs = unused_attrs
-        if attrs and not self.ignore_unknown_elements:
+        if attrs and not self.meta.ignore_unknown_elements:
             for attr in attrs:
                 if not attr.nodeName.startswith("xml"):
                     err = "unknown attribute: %s" % (attr.name,)
@@ -121,6 +244,8 @@ class Base(object):
         cur_field_idx = 0 
         for child in node.childNodes:
             idx = cur_field_idx
+            #  If we successfully break out of this loop, one of our
+            #  fields has consumed the node.
             while idx < len(self._fields):
                 field = self._fields[idx]
                 res = field.parse_child_node(self,child)
@@ -137,7 +262,7 @@ class Base(object):
                 else:
                     idx += 1
             else:
-                if not self.ignore_unknown_elements:
+                if not self.meta.ignore_unknown_elements:
                     if child.nodeType == child.ELEMENT_NODE:
                         err = "unknown element: %s" % (child.nodeName,)
                         raise ParseError(err)
@@ -155,7 +280,7 @@ class Base(object):
         return self
 
     def render(self,encoding=None,fragment=False,nsmap=None):
-        """Produce xml from this object's instance data.
+        """Produce XML from this model's instance data.
 
         A unicode string will be returned if any of the objects contain
         unicode values; specifying the 'encoding' argument forces generation
@@ -183,18 +308,19 @@ class Base(object):
         return xml
 
     def _render(self,nsmap):
+        """Render this model as an XML fragment."""
         #  Determine opening and closing tags
         pushed_ns = False
-        if self._meta.namespace:
-            namespace = self._meta.namespace
-            prefix = self._meta.namespace_prefix
+        if self.meta.namespace:
+            namespace = self.meta.namespace
+            prefix = self.meta.namespace_prefix
             try:
                 cur_ns = nsmap[prefix]
             except KeyError:
                 cur_ns = []
                 nsmap[prefix] = cur_ns
             if prefix:
-                tagname = "%s:%s" % (prefix,self._meta.tagname)
+                tagname = "%s:%s" % (prefix,self.meta.tagname)
                 open_tag_contents = [tagname]
                 if not cur_ns or cur_ns[0] != namespace:
                     cur_ns.insert(0,namespace)
@@ -202,15 +328,15 @@ class Base(object):
                     open_tag_contents.append('xmlns:%s="%s"'%(prefix,namespace))
                 close_tag_contents = tagname
             else:
-                open_tag_contents = [self._meta.tagname]
+                open_tag_contents = [self.meta.tagname]
                 if not cur_ns or cur_ns[0] != namespace:
                     cur_ns.insert(0,namespace)
                     pushed_ns = True
                     open_tag_contents.append('xmlns="%s"'%(namespace,))
-                close_tag_contents = self._meta.tagname
+                close_tag_contents = self.meta.tagname
         else:
-            open_tag_contents = [self._meta.tagname] 
-            close_tag_contents = self._meta.tagname
+            open_tag_contents = [self.meta.tagname] 
+            close_tag_contents = self.meta.tagname
         # Find the attributes and child nodes
         attrs = []
         children = []
@@ -270,16 +396,16 @@ class Base(object):
             err = "Class '%s' got a non-element node"
             err = err % (cls.__name__,)
             raise ParseError(err)
-        if node.localName != cls._meta.tagname:
+        if node.localName != cls.meta.tagname:
             err = "Class '%s' got tag '%s' (expected '%s')"
             err = err % (cls.__name__,node.localName,
-                         cls._meta.tagname)
+                         cls.meta.tagname)
             raise ParseError(err)
-        if cls._meta.namespace:
-            if node.namespaceURI != cls._meta.namespace:
+        if cls.meta.namespace:
+            if node.namespaceURI != cls.meta.namespace:
                 err = "Class '%s' got namespace '%s' (expected '%s')"
                 err = err % (cls.__name__,node.namespaceURI,
-                             cls._meta.namespace)
+                             cls.meta.namespace)
                 raise ParseError(err)
         else:
             if node.namespaceURI:
@@ -288,11 +414,3 @@ class Base(object):
                 raise ParseError(err)
 
 
-def FilterNodes(nodes):
-    for node in nodes:
-        if node.nodeType == node.ELEMENT_NODE:
-            yield node
-        elif node.nodeType == node.TEXT_NODE:
-            if node.nodeValue.strip():
-                yield node
- 
