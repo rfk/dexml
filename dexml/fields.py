@@ -412,7 +412,8 @@ class List(Field):
     def parse_done(self,obj):
         items = self.__get__(obj)
         if self.minlength is not None and len(items) < self.minlength:
-            raise dexml.ParseError("Field '%s': not enough items" % (self.field_name,))
+            if self.required or len(items) != 0:
+                raise dexml.ParseError("Field '%s': not enough items" % (self.field_name,))
         if self.maxlength is not None and len(items) > self.maxlength:
             raise dexml.ParseError("Field '%s': too many items" % (self.field_name,))
 
