@@ -483,5 +483,6 @@ class XmlNode(Field):
         return dexml.PARSE_SKIP
 
     def render_children(self,obj,val,nsmap):
-        yield val.toxml()
+        if val is not None:
+            yield val.toxml()
 
