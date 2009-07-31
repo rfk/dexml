@@ -4,12 +4,31 @@
 
 """
 
+import os
+import os.path
+import difflib
 import unittest
+import doctest
+
 import dexml
 from dexml import fields
 
-import doctest
-TestDexmlDocstring = doctest.DocTestSuite(dexml)._tests[0]
+
+class TestDexmlDocstring(unittest.TestCase):
+
+    def test_docstring(self):
+        """Test dexml docstrings"""
+        doctest.testmod(dexml)
+
+    def test_readme_matches_docstring(self):
+        """Test that the README matches the main docstring."""
+        readme = os.path.join(os.path.dirname(__file__),"../README")
+        diff = difflib.unified_diff(open(readme).readlines(),dexml.__doc__.splitlines(True))
+        diff = "".join(diff)
+        if diff:
+            print diff
+            raise AssertionError, "README doesn't match docstring"
+
 
 class TestDexml(unittest.TestCase):
 
