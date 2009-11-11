@@ -1,0 +1,6 @@
+
+
+v0.2.0:
+
+  * changed license from BSD to MIT (it's simpler)
+
