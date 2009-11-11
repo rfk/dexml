@@ -16,7 +16,7 @@ LONG_DESC = dexml.__doc__
 AUTHOR = "Ryan Kelly"
 AUTHOR_EMAIL = "ryan@rfk.id.au"
 URL="http://www.rfk.id.au/software/"
-LICENSE = "BSD"
+LICENSE = "MIT"
 KEYWORDS = "xml"
 
 setup(name=NAME,
