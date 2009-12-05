@@ -459,7 +459,11 @@ class Choice(Field):
             return dexml.PARSE_SKIP
 
     def render_children(self,obj,item,nsmap):
-        yield item.render(fragment=True,nsmap=nsmap)
+        if item is None:
+            if self.required:
+                raise dexml.RenderError("Field '%s': required field is missing" % (self.field_name,))
+        else:
+            yield item.render(fragment=True,nsmap=nsmap)
 
 
 class XmlNode(Field):
