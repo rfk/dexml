@@ -157,9 +157,9 @@ class ModelMetaclass(type):
         #  Set up the cls.meta object, inheriting from base classes
         cls.meta = Meta(name,attrs.get("meta"))
         for base in bases:
-            if not isinstance(b,ModelMetaclass):
+            if not isinstance(base,ModelMetaclass):
                 continue
-            if not hasattr(b,"meta"):
+            if not hasattr(base,"meta"):
                 continue
             for attr in dir(base.meta):
                 if attr.startswith("_"):
