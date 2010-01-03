@@ -48,6 +48,13 @@ AUTHOR_EMAIL = "ryan@rfk.id.au"
 URL="http://www.rfk.id.au/software/"
 LICENSE = "MIT"
 KEYWORDS = "xml"
+CLASSIFIERS = [
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 2",
+    "Programming Language :: Python :: 3",
+    "Development Status :: 4 - Beta",
+    "License :: OSI Approved :: MIT License"
+]
 
 setup(name=NAME,
       version=VERSION,
@@ -59,6 +66,7 @@ setup(name=NAME,
       license=LICENSE,
       keywords=KEYWORDS,
       packages=["dexml"],
+      classifiers=CLASSIFIERS,
       **setup_kwds
      )
 
