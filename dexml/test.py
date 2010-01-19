@@ -18,7 +18,7 @@ class TestDexmlDocstring(unittest.TestCase):
 
     def test_docstring(self):
         """Test dexml docstrings"""
-        doctest.testmod(dexml)
+        assert doctest.testmod(dexml)[0] == 0
 
     def test_readme_matches_docstring(self):
         """Test that the README matches the main docstring."""
