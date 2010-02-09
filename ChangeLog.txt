@@ -1,0 +1,13 @@
+
+v0.3.0:
+
+  * support for Python 3, via distribute and the "use_2to3" flag
+
+v0.2.1:
+
+  * support for optional Choice fields, thanks to Jose Orlando Pereira
+
+v0.2.0:
+
+  * changed license from BSD to MIT (it's simpler)
+

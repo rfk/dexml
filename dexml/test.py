@@ -23,11 +23,12 @@ class TestDexmlDocstring(unittest.TestCase):
     def test_readme_matches_docstring(self):
         """Test that the README matches the main docstring."""
         readme = os.path.join(os.path.dirname(__file__),"../README.txt")
-        diff = difflib.unified_diff(open(readme).readlines(),dexml.__doc__.splitlines(True))
-        diff = "".join(diff)
-        if diff:
-            print diff
-            raise AssertionError, "README doesn't match docstring"
+        if os.path.exists(readme):
+            diff = difflib.unified_diff(open(readme).readlines(),dexml.__doc__.splitlines(True))
+            diff = "".join(diff)
+            if diff:
+                print diff
+                raise AssertionError, "README doesn't match docstring"
 
 
 class TestDexml(unittest.TestCase):
