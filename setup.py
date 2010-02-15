@@ -7,12 +7,11 @@
 
 import sys
 setup_kwds = {}
-try:
+if sys.version_info > (3,):
     from setuptools import setup
     setup_kwds["test_suite"] = "dexml.test"
-    if sys.version_info > (3,):
-        setup_kwds["use_2to3"] = True
-except ImportError:
+    setup_kwds["use_2to3"] = True
+else:
     from distutils.core import setup
 
 
@@ -35,7 +34,7 @@ try:
         lines.append(ln)
         ln = next(src)
     exec("".join(lines),info)
-except RuntimeError:
+except Exception:
     pass
 
 
