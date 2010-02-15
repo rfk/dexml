@@ -162,13 +162,24 @@ class Value(Field):
             self.required = False
 
     def _get_attrname(self):
-        return self.__dict__.get('attrname',self.field_name)
+        attrname = self.__dict__['attrname']
+        if not attrname:
+            attrname = self.field_name
+        return attrname
     def _set_attrname(self,attrname):
-        if attrname is None:
-            self.__dict__.pop('attrname',None)
-        else:
-            self.__dict__['attrname'] = attrname
+        self.__dict__['attrname'] = attrname
     attrname = property(_get_attrname,_set_attrname)
+
+    def _get_tagname(self):
+        if self.__dict__["attrname"]:
+            return None
+        tagname = self.__dict__['tagname']
+        if tagname and not isinstance(tagname,(basestring,tuple)):
+            tagname = self.field_name
+        return tagname
+    def _set_tagname(self,tagname):
+        self.__dict__['tagname'] = tagname
+    tagname = property(_get_tagname,_set_tagname)
 
     def __get__(self,instance,owner=None):
         val = super(Value,self).__get__(instance,owner)
@@ -220,10 +231,16 @@ class Value(Field):
             val = self.render_value(val)
             if isinstance(self.tagname,basestring):
                 prefix = self.model_class.meta.namespace_prefix
-                if prefix:
-                    yield "<%s:%s>%s</%s:%s>" % (prefix,self.tagname,val,prefix,self.tagname)
+                if val:
+                    if prefix:
+                        yield "<%s:%s>%s</%s:%s>" % (prefix,self.tagname,val,prefix,self.tagname)
+                    else:
+                        yield "<%s>%s</%s>" % (self.tagname,val,self.tagname)
                 else:
-                    yield "<%s>%s</%s>" % (self.tagname,val,self.tagname)
+                    if prefix:
+                        yield "<%s:%s />" % (prefix,self.tagname,)
+                    else:
+                        yield "<%s />" % (self.tagname,)
         # TODO: support (ns,tagname) form
 
     def parse_value(self,val):
@@ -255,16 +272,45 @@ class Boolean(Value):
     """Field representing a simple boolean value.
 
     The strings corresponding to false are 'no', 'off', 'false' and '0',
-    compared case-insensitively.
+    compared case-insensitively.  Note that this means an empty tag or
+    attribute is considered True - this is usually what you want, since 
+    a completely missing attribute or tag can be interpreted as False.
+
+    To enforce that the presence of a tag indicates True and the absence of
+    a tag indicates False, pass the keyword argument "empty_only".
     """
+
+    class _EMPTYSTRING:
+        pass
+
+    class arguments(Value.arguments):
+        empty_only = False
 
     def __init__(self,**kwds):
         super(Boolean,self).__init__(**kwds)
+        if self.empty_only:
+            self.required = False
 
     def parse_value(self,val):
+        if self.empty_only and val != "":
+            raise ValueError("non-empty value in empty_only Boolean")
+        if val == "":
+            return self._EMPTYSTRING
         if val.lower() in ("no","off","false","0"):
             return False
         return True
+
+    def render_children(self,obj,val,nsmap):
+        if not val and self.empty_only:
+            return []
+        return super(Boolean,self).render_children(obj,val,nsmap)
+
+    def render_value(self,val):
+        if val is self._EMPTYSTRING:
+            return ""
+        if val and self.empty_only:
+            return ""
+        return str(val)
 
 
 class Model(Field):

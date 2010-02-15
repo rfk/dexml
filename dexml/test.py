@@ -259,3 +259,25 @@ class TestDexml(unittest.TestCase):
         self.assertEquals(b.meals[0].num_rashers,2)
         self.assertTrue(b.meals[1].with_milk)
 
+    def test_empty_only_boolean(self):
+        """Test operation of fields.Boolean with empty_only=True"""
+        class toggles(dexml.Model):
+            toggle_str = fields.Boolean(required=False)
+            toggle_empty = fields.Boolean(tagname=True,empty_only=True)
+
+        t = toggles.parse("<toggles />")
+        self.assertFalse(t.toggle_str)
+        self.assertFalse(t.toggle_empty)
+
+        t = toggles.parse("<toggles toggle_str=''><toggle_empty /></toggles>")
+        self.assertTrue(t.toggle_str)
+        self.assertTrue(t.toggle_empty)
+
+        t = toggles.parse("<toggles toggle_str='no'><toggle_empty /></toggles>")
+        self.assertFalse(t.toggle_str)
+        self.assertTrue(t.toggle_empty)
+
+        self.assertRaises(ValueError,toggles.parse,"<toggles><toggle_empty>no</toggle_empty></toggles>")
+        self.assertFalse("toggle_empty" in toggles(toggle_empty=False).render())
+        self.assertTrue("<toggle_empty />" in toggles(toggle_empty=True).render())
+
