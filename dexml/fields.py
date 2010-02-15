@@ -5,6 +5,7 @@
 """
 
 import dexml
+from xml.sax.saxutils import escape, quoteattr
 
 #  Global counter tracking the order in which fields are declared.
 _order_counter = 0
@@ -524,15 +525,21 @@ class XmlNode(Field):
                 value = value.encode(self.encoding)
             doc = dexml.minidom.parseString(value)
             value = doc.documentElement
+        if value is not None and value.namespaceURI is not None:
+            nsattr = "xmlns"
+            if value.prefix:
+                nsattr = ":".join((nsattr,value.prefix,))
+            value.attributes[nsattr] = value.namespaceURI
         return super(XmlNode,self).__set__(instance,value)
 
     def parse_child_node(self,obj,node):
-        if self.tagname is None or node.localName == self.tagname:
+        if self.tagname is None or self._check_tagname(node,self.tagname):
             self.__set__(obj,node)
             return dexml.PARSE_DONE
         return dexml.PARSE_SKIP
 
-    def render_children(self,obj,val,nsmap):
+    @classmethod
+    def render_children(cls,obj,val,nsmap):
         if val is not None:
             yield val.toxml()
 

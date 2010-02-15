@@ -281,3 +281,21 @@ class TestDexml(unittest.TestCase):
         self.assertFalse("toggle_empty" in toggles(toggle_empty=False).render())
         self.assertTrue("<toggle_empty />" in toggles(toggle_empty=True).render())
 
+    def test_XmlNode(self):
+        """Test correct operation of fields.XmlNode."""
+        class bucket(dexml.Model):
+            class meta:
+                namespace = "bucket-uri"
+            contents = fields.XmlNode()
+        b = bucket.parse("<B:bucket xmlns:B='bucket-uri'><B:contents><hello><B:world /></hello></B:contents></B:bucket>")
+        self.assertEquals(b.contents.childNodes[0].tagName,"hello")
+        self.assertEquals(b.contents.childNodes[0].namespaceURI,None)
+        self.assertEquals(b.contents.childNodes[0].childNodes[0].localName,"world")
+        self.assertEquals(b.contents.childNodes[0].childNodes[0].namespaceURI,"bucket-uri")
+
+        b = bucket()
+        b = bucket.parse("<bucket xmlns='bucket-uri'><bucket><hello /></bucket></bucket>")
+        b2 = bucket.parse("".join(fields.XmlNode.render_children(b,b.contents,{})))
+        self.assertEquals(b2.contents.tagName,"hello")
+
+
