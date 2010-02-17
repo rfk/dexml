@@ -259,3 +259,43 @@ class TestDexml(unittest.TestCase):
         self.assertEquals(b.meals[0].num_rashers,2)
         self.assertTrue(b.meals[1].with_milk)
 
+    def test_empty_only_boolean(self):
+        """Test operation of fields.Boolean with empty_only=True"""
+        class toggles(dexml.Model):
+            toggle_str = fields.Boolean(required=False)
+            toggle_empty = fields.Boolean(tagname=True,empty_only=True)
+
+        t = toggles.parse("<toggles />")
+        self.assertFalse(t.toggle_str)
+        self.assertFalse(t.toggle_empty)
+
+        t = toggles.parse("<toggles toggle_str=''><toggle_empty /></toggles>")
+        self.assertTrue(t.toggle_str)
+        self.assertTrue(t.toggle_empty)
+
+        t = toggles.parse("<toggles toggle_str='no'><toggle_empty /></toggles>")
+        self.assertFalse(t.toggle_str)
+        self.assertTrue(t.toggle_empty)
+
+        self.assertRaises(ValueError,toggles.parse,"<toggles><toggle_empty>no</toggle_empty></toggles>")
+        self.assertFalse("toggle_empty" in toggles(toggle_empty=False).render())
+        self.assertTrue("<toggle_empty />" in toggles(toggle_empty=True).render())
+
+    def test_XmlNode(self):
+        """Test correct operation of fields.XmlNode."""
+        class bucket(dexml.Model):
+            class meta:
+                namespace = "bucket-uri"
+            contents = fields.XmlNode()
+        b = bucket.parse("<B:bucket xmlns:B='bucket-uri'><B:contents><hello><B:world /></hello></B:contents></B:bucket>")
+        self.assertEquals(b.contents.childNodes[0].tagName,"hello")
+        self.assertEquals(b.contents.childNodes[0].namespaceURI,None)
+        self.assertEquals(b.contents.childNodes[0].childNodes[0].localName,"world")
+        self.assertEquals(b.contents.childNodes[0].childNodes[0].namespaceURI,"bucket-uri")
+
+        b = bucket()
+        b = bucket.parse("<bucket xmlns='bucket-uri'><bucket><hello /></bucket></bucket>")
+        b2 = bucket.parse("".join(fields.XmlNode.render_children(b,b.contents,{})))
+        self.assertEquals(b2.contents.tagName,"hello")
+
+
