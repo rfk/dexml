@@ -64,12 +64,14 @@ classes for more details:
 
 __ver_major__ = 0
 __ver_minor__ = 3
-__ver_patch__ = 1
+__ver_patch__ = 2
 __ver_sub__ = ""
 __version__ = "%d.%d.%d%s" % (__ver_major__,__ver_minor__,__ver_patch__,__ver_sub__)
                               
 
+import copy
 from xml.dom import minidom
+
 from dexml import fields
 
 
@@ -168,13 +170,25 @@ class ModelMetaclass(type):
                     if val is not None:
                         setattr(cls.meta,attr,val)
         #  Create ordered list of field objects, telling each about their
-        #  name and containing class.
-        cls._fields = []
+        #  name and containing class.  Inherit fields from base classes
+        #  only if not overridden on the class itself.
+        base_fields = {}
+        for base in bases:
+            if not isinstance(base,ModelMetaclass):
+                continue
+            for field in base._fields:
+                if field.field_name not in base_fields:
+                    field = copy.copy(field)
+                    field.model_class = cls
+                    base_fields[field.field_name] = field
+        cls_fields = []
         for (name,value) in attrs.iteritems():
             if isinstance(value,fields.Field):
+                base_fields.pop(name,None)
                 value.field_name = name
                 value.model_class = cls
-                cls._fields.append(value)
+                cls_fields.append(value)
+        cls._fields = base_fields.values() + cls_fields
         cls._fields.sort(key=lambda f: f._order_counter)
         #  Register the new class so we can find it by name later on
         mcls.instances[(cls.meta.namespace,cls.meta.tagname)] = cls
@@ -212,6 +226,7 @@ class Model(object):
     """
 
     __metaclass__ = ModelMetaclass
+    _fields = []
 
     def __init__(self,**kwds):
         """Default Model constructor.
