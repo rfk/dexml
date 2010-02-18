@@ -298,4 +298,33 @@ class TestDexml(unittest.TestCase):
         b2 = bucket.parse("".join(fields.XmlNode.render_children(b,b.contents,{})))
         self.assertEquals(b2.contents.tagName,"hello")
 
+    def test_order_sensitive(self):
+        """Test operation of order-sensitive and order-insensitive parsing"""
+        class junk(dexml.Model):
+            class meta:
+                order_sensitive = True
+            name = fields.String(tagname=True)
+            notes = fields.List(fields.String(tagname="note"))
+            amount = fields.Integer(tagname=True)
+        class junk_unordered(junk):
+            class meta:
+                tagname = "junk"
+                order_sensitive = False
+
+        j = junk.parse("<junk><name>test1</name><note>note1</note><note>note2</note><amount>7</amount></junk>")
+        self.assertEquals(j.name,"test1")
+        self.assertEquals(j.notes,["note1","note2"])
+        self.assertEquals(j.amount,7)
+
+        j = junk_unordered.parse("<junk><name>test1</name><note>note1</note><note>note2</note><amount>7</amount></junk>")
+        self.assertEquals(j.name,"test1")
+        self.assertEquals(j.notes,["note1","note2"])
+        self.assertEquals(j.amount,7)
+
+        self.assertRaises(dexml.ParseError,junk.parse,"<junk><note>note1</note><amount>7</amount><note>note2</note><name>test1</name></junk>")
+
+        j = junk_unordered.parse("<junk><note>note1</note><amount>7</amount><note>note2</note><name>test1</name></junk>")
+        self.assertEquals(j.name,"test1")
+        self.assertEquals(j.notes,["note1","note2"])
+        self.assertEquals(j.amount,7)
 
