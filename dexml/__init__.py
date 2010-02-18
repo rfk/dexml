@@ -122,7 +122,8 @@ class Meta:
         * namespace_prefix:  the prefix to use for rendering namespaced tags
         * ignore_unknown_elements:  ignore unknown elements when parsing
         * case_sensitive:    match tag/attr names case-sensitively
-        * order_sensitive:   match tags strictly in order
+        * order_sensitive:   match child tags in order of field definition
+
     """
 
     _defaults = {"tagname":None,
