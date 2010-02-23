@@ -1,12 +1,15 @@
 
 
-v0.3.1:
+v0.3.2:
 
   * more careful management of namespaces in fields.XmlNode.
-  * support for empty-only Boolean fields, where presence of the attribute
-    or tag indicates True and absence indicates False.
   * support for rendering fields whose attrname or tagname is a tuple
     (namespace,localName)
+
+v0.3.1:
+
+  * support for empty-only Boolean fields, where presence of the attribute
+    or tag indicates True and absence indicates False.
 
 v0.3.0:
 
