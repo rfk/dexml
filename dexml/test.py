@@ -298,4 +298,53 @@ class TestDexml(unittest.TestCase):
         b2 = bucket.parse("".join(fields.XmlNode.render_children(b,b.contents,{})))
         self.assertEquals(b2.contents.tagName,"hello")
 
+    def test_namespaced_attrs(self):
+        class nsa(dexml.Model):
+            f1 = fields.Integer(attrname=("test:","f1"))
+        n = nsa.parse("<nsa t:f1='7' xmlns:t='test:' />")
+        self.assertEquals(n.f1,7)
+        n2 = nsa.parse(n.render())
+        self.assertEquals(n2.f1,7)
+
+        class nsa_decl(dexml.Model):
+            class meta:
+                tagname = "nsa"
+                namespace = "test:"
+                namespace_prefix = "t"
+            f1 = fields.Integer(attrname=("test:","f1"))
+        n = nsa_decl.parse("<t:nsa t:f1='7' xmlns:t='test:' />")
+        self.assertEquals(n.f1,7)
+        self.assertEquals(n.render(fragment=True),'<t:nsa xmlns:t="test:" t:f1="7" />')
+
+    def test_namespaced_children(self):
+        class nsc(dexml.Model):
+            f1 = fields.Integer(tagname=("test:","f1"))
+        n = nsc.parse("<nsc xmlns:t='test:'><t:f1>7</t:f1></nsc>")
+        self.assertEquals(n.f1,7)
+        n2 = nsc.parse(n.render())
+        self.assertEquals(n2.f1,7)
+
+        n = nsc.parse("<nsc><f1 xmlns='test:'>7</f1></nsc>")
+        self.assertEquals(n.f1,7)
+        n2 = nsc.parse(n.render())
+        self.assertEquals(n2.f1,7)
+
+        class nsc_decl(dexml.Model):
+            class meta:
+                tagname = "nsc"
+                namespace = "test:"
+                namespace_prefix = "t"
+            f1 = fields.Integer(tagname=("test:","f1"))
+        n = nsc_decl.parse("<t:nsc xmlns:t='test:'><t:f1>7</t:f1></t:nsc>")
+        self.assertEquals(n.f1,7)
+        n2 = nsc_decl.parse(n.render())
+        self.assertEquals(n2.f1,7)
+
+        n = nsc_decl.parse("<nsc xmlns='test:'><f1>7</f1></nsc>")
+        self.assertEquals(n.f1,7)
+        n2 = nsc_decl.parse(n.render())
+        self.assertEquals(n2.f1,7)
+
+        self.assertEquals(n2.render(fragment=True),'<t:nsc xmlns:t="test:"><t:f1>7</t:f1></t:nsc>')
+
 

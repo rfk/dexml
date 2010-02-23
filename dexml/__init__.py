@@ -297,7 +297,12 @@ class Model(object):
         leading "<?xml>" declaration.  To generate an XML fragment set
         the 'fragment' argument to True.
 
-        TODO: explain the 'nsmap' argument
+        The 'nsmap' argument maintains the current stack of namespace
+        prefixes used during rendering; it maps each prefix to a list of
+        namespaces, with the first item in the list being the current
+        namespace for that prefix.  This argument should never be given
+        directly; it is for internal use by the rendering routines.
+         
         """
         if nsmap is None:
             nsmap = {}
@@ -350,7 +355,7 @@ class Model(object):
         num = 0
         for f in self._fields:
             val = getattr(self,f.field_name)
-            attrs.extend(f.render_attributes(self,val))
+            attrs.extend(f.render_attributes(self,val,nsmap))
             children.extend(f.render_children(self,val,nsmap))
             if len(attrs) + len(children) == num and f.required:
                 raise RenderError("Field '%s' is missing" % (f.field_name,))

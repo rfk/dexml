@@ -5,6 +5,7 @@
 """
 
 import dexml
+import random
 from xml.sax.saxutils import escape, quoteattr
 
 #  Global counter tracking the order in which fields are declared.
@@ -92,7 +93,7 @@ class Field(object):
         """
         pass
 
-    def render_attributes(self,obj,val):
+    def render_attributes(self,obj,val,nsmap):
         """Render any attributes that this field manages."""
         return []
 
@@ -163,6 +164,8 @@ class Value(Field):
             self.required = False
 
     def _get_attrname(self):
+        if self.__dict__["tagname"]:
+            return None
         attrname = self.__dict__['attrname']
         if not attrname:
             attrname = self.field_name
@@ -222,27 +225,60 @@ class Value(Field):
         self.__set__(obj,self.parse_value("".join(vals)))
         return dexml.PARSE_DONE
 
-    def render_attributes(self,obj,val):
-        if val is not None and val is not self.default and not self.tagname:
-            yield '%s="%s"' % (self.attrname,self.render_value(val),)
-        # TODO: support (ns,attrname) form
+    def render_attributes(self,obj,val,nsmap):
+        if val is not None and val is not self.default and self.attrname:
+            if isinstance(self.attrname,basestring):
+                yield '%s="%s"' % (self.attrname,self.render_value(val),)
+            else:
+                m_meta = self.model_class.meta
+                (ns,nm) = self.attrname
+                if ns == m_meta.namespace and m_meta.namespace_prefix:
+                    prefix = m_meta.namespace_prefix
+                    yield '%s:%s="%s"' % (prefix,nm,self.render_value(val),)
+                else:
+                    try:
+                        prefix = nsmap[ns][0]
+                    except (KeyError,IndexError):
+                        prefix = "p" + str(random.randint(0,10000))
+                        while prefix in nsmap:
+                            prefix = "p" + str(random.randint(0,10000))
+                    yield '%s:%s="%s"' % (prefix,nm,self.render_value(val),)
+                    yield 'xmlns:%s="%s"' % (prefix,ns,)
 
     def render_children(self,obj,val,nsmap):
         if val is not None and val is not self.default and self.tagname:
             val = self.render_value(val)
-            if isinstance(self.tagname,basestring):
-                prefix = self.model_class.meta.namespace_prefix
+            def render_tag(prefix,localName,attrs):
                 if val:
                     if prefix:
-                        yield "<%s:%s>%s</%s:%s>" % (prefix,self.tagname,val,prefix,self.tagname)
+                        return "<%s:%s%s>%s</%s:%s>" % (prefix,localName,attrs,val,prefix,localName)
                     else:
-                        yield "<%s>%s</%s>" % (self.tagname,val,self.tagname)
+                        return "<%s%s>%s</%s>" % (localName,attrs,val,localName)
                 else:
                     if prefix:
-                        yield "<%s:%s />" % (prefix,self.tagname,)
+                        return "<%s:%s%s />" % (prefix,localName,attrs,)
                     else:
-                        yield "<%s />" % (self.tagname,)
-        # TODO: support (ns,tagname) form
+                        return "<%s%s />" % (localName,attrs)
+            attrs = ""
+            if isinstance(self.tagname,basestring):
+                prefix = self.model_class.meta.namespace_prefix
+                localName = self.tagname
+            else:
+                m_meta = self.model_class.meta
+                (ns,localName) = self.tagname
+                if not ns:
+                    prefix = None
+                elif ns == m_meta.namespace and m_meta.namespace_prefix:
+                    prefix = m_meta.namespace_prefix
+                else:
+                    try:
+                        prefix = nsmap[ns][0]
+                    except (KeyError,IndexError):
+                        prefix = "p" + str(random.randint(0,10000))
+                        while prefix in nsmap:
+                            prefix = "p" + str(random.randint(0,10000))
+                        attrs = ' xmlns:%s="%s"' % (prefix,ns)
+            yield render_tag(prefix,localName,attrs)
 
     def parse_value(self,val):
         return val
@@ -385,7 +421,7 @@ class Model(Field):
             self.__set__(obj,inst)
             return dexml.PARSE_DONE
 
-    def render_attributes(self,obj,val):
+    def render_attributes(self,obj,val,nsmap):
         return []
 
     def render_children(self,obj,val,nsmap):
