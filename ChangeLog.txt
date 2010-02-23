@@ -2,6 +2,7 @@
 
 v0.3.2:
 
+  * support for order-insensitive parsing
   * more careful management of namespaces in fields.XmlNode.
   * support for rendering fields whose attrname or tagname is a tuple
     (namespace,localName)

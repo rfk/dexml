@@ -18,7 +18,7 @@ class TestDexmlDocstring(unittest.TestCase):
 
     def test_docstring(self):
         """Test dexml docstrings"""
-        doctest.testmod(dexml)
+        assert doctest.testmod(dexml)[0] == 0
 
     def test_readme_matches_docstring(self):
         """Test that the README matches the main docstring."""
@@ -347,4 +347,33 @@ class TestDexml(unittest.TestCase):
 
         self.assertEquals(n2.render(fragment=True),'<t:nsc xmlns:t="test:"><t:f1>7</t:f1></t:nsc>')
 
+    def test_order_sensitive(self):
+        """Test operation of order-sensitive and order-insensitive parsing"""
+        class junk(dexml.Model):
+            class meta:
+                order_sensitive = True
+            name = fields.String(tagname=True)
+            notes = fields.List(fields.String(tagname="note"))
+            amount = fields.Integer(tagname=True)
+        class junk_unordered(junk):
+            class meta:
+                tagname = "junk"
+                order_sensitive = False
+
+        j = junk.parse("<junk><name>test1</name><note>note1</note><note>note2</note><amount>7</amount></junk>")
+        self.assertEquals(j.name,"test1")
+        self.assertEquals(j.notes,["note1","note2"])
+        self.assertEquals(j.amount,7)
+
+        j = junk_unordered.parse("<junk><name>test1</name><note>note1</note><note>note2</note><amount>7</amount></junk>")
+        self.assertEquals(j.name,"test1")
+        self.assertEquals(j.notes,["note1","note2"])
+        self.assertEquals(j.amount,7)
+
+        self.assertRaises(dexml.ParseError,junk.parse,"<junk><note>note1</note><amount>7</amount><note>note2</note><name>test1</name></junk>")
+
+        j = junk_unordered.parse("<junk><note>note1</note><amount>7</amount><note>note2</note><name>test1</name></junk>")
+        self.assertEquals(j.name,"test1")
+        self.assertEquals(j.notes,["note1","note2"])
+        self.assertEquals(j.amount,7)
 

@@ -69,7 +69,9 @@ __ver_sub__ = ""
 __version__ = "%d.%d.%d%s" % (__ver_major__,__ver_minor__,__ver_patch__,__ver_sub__)
                               
 
+import copy
 from xml.dom import minidom
+
 from dexml import fields
 
 
@@ -168,13 +170,25 @@ class ModelMetaclass(type):
                     if val is not None:
                         setattr(cls.meta,attr,val)
         #  Create ordered list of field objects, telling each about their
-        #  name and containing class.
-        cls._fields = []
+        #  name and containing class.  Inherit fields from base classes
+        #  only if not overridden on the class itself.
+        base_fields = {}
+        for base in bases:
+            if not isinstance(base,ModelMetaclass):
+                continue
+            for field in base._fields:
+                if field.field_name not in base_fields:
+                    field = copy.copy(field)
+                    field.model_class = cls
+                    base_fields[field.field_name] = field
+        cls_fields = []
         for (name,value) in attrs.iteritems():
             if isinstance(value,fields.Field):
+                base_fields.pop(name,None)
                 value.field_name = name
                 value.model_class = cls
-                cls._fields.append(value)
+                cls_fields.append(value)
+        cls._fields = base_fields.values() + cls_fields
         cls._fields.sort(key=lambda f: f._order_counter)
         #  Register the new class so we can find it by name later on
         mcls.instances[(cls.meta.namespace,cls.meta.tagname)] = cls
@@ -212,6 +226,7 @@ class Model(object):
     """
 
     __metaclass__ = ModelMetaclass
+    _fields = []
 
     def __init__(self,**kwds):
         """Default Model constructor.
@@ -242,12 +257,24 @@ class Model(object):
             if len(unused_attrs) < len(attrs):
                 fields_found.append(field)
             attrs = unused_attrs
-        if attrs and not self.meta.ignore_unknown_elements:
-            for attr in attrs:
-                if not attr.nodeName.startswith("xml"):
-                    err = "unknown attribute: %s" % (attr.name,)
-                    raise ParseError(err)
+        for attr in attrs:
+            self._handle_unparsed_node(attr)
         #  Try to consume all child nodes
+        if self.meta.order_sensitive:
+            self._parse_children_ordered(node,fields_found)
+        else:
+            self._parse_children_unordered(node,fields_found)
+        #  Check that all required fields have been found
+        for field in self._fields:
+            if field.required and field not in fields_found:
+                err = "required field not found: '%s'" % (field.field_name,)
+                raise ParseError(err)
+            field.parse_done(self)
+        #  All done, return the instance so created
+        return self
+
+    def _parse_children_ordered(self,node,fields_found):
+        """Parse the children of the given node using strict field ordering."""
         cur_field_idx = 0 
         for child in node.childNodes:
             idx = cur_field_idx
@@ -261,30 +288,52 @@ class Model(object):
                         fields_found.append(field)
                     cur_field_idx = idx + 1
                     break
-                elif res is PARSE_MORE:
+                if res is PARSE_MORE:
                     if field not in fields_found:
                         fields_found.append(field)
                     cur_field_idx = idx
                     break
-                else:
-                    idx += 1
+                idx += 1
             else:
-                if not self.meta.ignore_unknown_elements:
-                    if child.nodeType == child.ELEMENT_NODE:
-                        err = "unknown element: %s" % (child.nodeName,)
-                        raise ParseError(err)
-                    elif child.nodeType == child.TEXT_NODE:
-                        if child.nodeValue.strip():
-                            err = "unparsed text node: %s" % (child.nodeValue,)
-                            raise ParseError(err)
-        #  Check that all required fields have been found
-        for field in self._fields:
-            if field.required and field not in fields_found:
-                err = "required field not found: '%s'" % (field.field_name,)
+                self._handle_unparsed_node(child)
+
+    def _parse_children_unordered(self,node,fields_found):
+        """Parse the children of the given node using loose field ordering."""
+        done_fields = {}
+        for child in node.childNodes:
+            idx = 0
+            #  If we successfully break out of this loop, one of our
+            #  fields has consumed the node.
+            while idx < len(self._fields):
+                if idx not in done_fields:
+                    field = self._fields[idx]
+                    res = field.parse_child_node(self,child)
+                    if res is PARSE_DONE:
+                        done_fields[idx] = True
+                        if field not in fields_found:
+                            fields_found.append(field)
+                        break
+                    if res is PARSE_MORE:
+                        if field not in fields_found:
+                            fields_found.append(field)
+                        break
+                idx += 1
+            else:
+                self._handle_unparsed_node(child)
+
+    def _handle_unparsed_node(self,node):
+        if not self.meta.ignore_unknown_elements:
+            if node.nodeType == node.ELEMENT_NODE:
+                err = "unknown element: %s" % (node.nodeName,)
                 raise ParseError(err)
-            field.parse_done(self)
-        #  All done, return the instance so created
-        return self
+            elif node.nodeType == node.TEXT_NODE:
+                if node.nodeValue.strip():
+                    err = "unparsed text node: %s" % (node.nodeValue,)
+                    raise ParseError(err)
+            elif node.nodeType == node.ATTRIBUTE_NODE:
+                if not node.nodeName.startswith("xml"):
+                    err = "unknown attribute: %s" % (node.name,)
+                    raise ParseError(err)
 
     def render(self,encoding=None,fragment=False,nsmap=None):
         """Produce XML from this model's instance data.
