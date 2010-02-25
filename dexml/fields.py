@@ -511,6 +511,102 @@ class List(Field):
                 yield data
 
 
+class Dict(Field):
+    """Field subclass representing a dict of fields keyed by unique attribute value.
+
+    This field corresponds to a indexed dict of other fields.  You would
+    declare it like so:
+
+      class MyObject(Model):
+          name = fields.String(tagname = 'name')
+          attr = fields.String(tagname = 'attr')
+
+      class MyModel(Model):
+          items = fields.Dict(fields.Model(MyObject), key = 'name')
+
+    Corresponding to XML such as:
+
+      <MyModel><MyObject><name>object1</name><attr>val1</attr></MyObject></MyModel>
+
+
+    The properties 'minlength' and 'maxlength' control the allowable size
+    of the dict as in the List class.
+    If unique property set to True, parsing will raise exception on non-unique
+    key values
+    """
+
+    class arguments(Field.arguments):
+        field = None
+        minlength = None
+        maxlength = None
+        unique = False
+
+    def __init__(self, field, key, **kwds):
+        if isinstance(field, Field):
+            kwds["field"] = field
+        else:
+            kwds["field"] = Model(field, **kwds)
+        super(Dict, self).__init__(**kwds)
+        if not self.minlength:
+            self.required = False
+        self.key = key
+
+    def _get_field(self):
+        field = self.__dict__["field"]
+        if not hasattr(field, "field_name"):
+            field.field_name = self.field_name
+        if not hasattr(field, "model_class"):
+            field.model_class = self.model_class
+        return field
+    def _set_field(self, field):
+        self.__dict__["field"] = field
+    field = property(_get_field, _set_field)
+
+    def __get__(self,instance,owner=None):
+        val = super(Dict, self).__get__(instance, owner)
+        if val is not None:
+            return val
+        self.__set__(instance, dict())
+        return self.__get__(instance, owner)
+
+    def parse_child_node(self, obj, node):
+        tmpobj = _AttrBucket()
+        res = self.field.parse_child_node(tmpobj, node)
+        if res is dexml.PARSE_MORE:
+            raise RuntimeError("items in a dict cannot return PARSE_MORE")
+        if res is dexml.PARSE_DONE:
+            items = self.__get__(obj)
+            val = getattr(tmpobj, self.field_name)
+            try:
+                key = getattr(val, self.key)
+            except AttributeError:
+                raise dexml.ParseError("Key field '%s' required but not found in dict value" % (self.key, ))
+            if self.unique and key in items:
+                raise dexml.ParseError("Key '%s' already exists in dict" % (key,))
+            items[key] = val
+            return dexml.PARSE_MORE
+        else:
+            return dexml.PARSE_SKIP
+
+    def parse_done(self, obj):
+        items = self.__get__(obj)
+        if self.minlength is not None and len(items) < self.minlength:
+            if self.required or len(items) != 0:
+                raise dexml.ParseError("Field '%s': not enough items" % (self.field_name,))
+        if self.maxlength is not None and len(items) > self.maxlength:
+            raise dexml.ParseError("Field '%s': too many items" % (self.field_name,))
+
+    def render_children(self, obj, items, nsmap):
+        if self.minlength is not None and len(items) < self.minlength:
+            if self.required:
+                raise dexml.RenderError("Field '%s': not enough items" % (self.field_name,))
+        if self.maxlength is not None and len(items) > self.maxlength:
+            raise dexml.RenderError("too many items")
+        for item in items.values():
+            for data in self.field.render_children(obj, item, nsmap):
+                yield data
+
+
 class Choice(Field):
     """Field subclass accepting any one of a given set of Model fields."""
 

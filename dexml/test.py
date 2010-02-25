@@ -218,6 +218,29 @@ class TestDexml(unittest.TestCase):
         self.assertEquals(p.render(fragment=True),'<pets><person name="lozz" age="25" /><pet name="riley" /><pet name="guppy" species="fish" /><note>noted</note></pets>')
 
 
+    def test_dict_field(self):
+        """Test operation of fields.Dict"""
+        class cobject(dexml.Model):
+            name = fields.String(tagname = 'name')
+            attr = fields.String(tagname = 'attr')
+        class collection(dexml.Model):
+            cobject = fields.Dict(fields.Model(cobject), key = 'name')
+        
+        c = collection.parse("<collection><cobject><name>obj1</name><attr>val1</attr></cobject><cobject><name>obj2</name><attr>val2</attr></cobject></collection>")
+        
+        self.assertEquals(c.cobject['obj1'].name, 'obj1')
+        self.assertEquals(c.cobject['obj2'].attr, 'val2')
+        
+        self.assertEquals(c.render(fragment=True), '<collection><cobject><name>obj1</name><attr>val1</attr></cobject><cobject><name>obj2</name><attr>val2</attr></cobject></collection>')
+        
+        c.cobject['obj3'] = cobject(name = 'obj3', attr = 'val3')
+        self.assertEquals(c.cobject['obj3'].attr, 'val3')
+        
+        class collection(dexml.Model):
+            cobject = fields.Dict(fields.Model(cobject), key = 'name', unique = True)
+        
+        self.assertRaises(dexml.ParseError, collection.parse, "<collection><cobject><name>obj1</name><attr>val1</attr></cobject><cobject><name>obj1</name><attr>val2</attr></cobject></collection>")
+
     def test_choice_field(self):
         """Test operation of fields.Choice"""
         class breakfast(dexml.Model):
