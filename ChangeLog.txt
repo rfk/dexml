@@ -1,4 +1,7 @@
 
+v0.3.3:
+
+  * Dict field type; thanks to Alexander Vladimirov
 
 v0.3.2:
 
