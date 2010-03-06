@@ -134,11 +134,21 @@ class Meta:
                  "case_sensitive":True,
                  "order_sensitive":True}
 
-    def __init__(self,name,meta):
+    def __init__(self,name,meta_attrs):
         for (attr,default) in self._defaults.items():
-            setattr(self,attr,getattr(meta,attr,default))
+            setattr(self,attr,meta_attrs.get(attr,default))
         if self.tagname is None:
             self.tagname = name
+
+
+def _meta_attributes(meta):
+    """Extract attributes from a "meta" object."""
+    meta_attrs = {}
+    if meta:
+        for attr in dir(meta):
+            if not attr.startswith("_"):
+                meta_attrs[attr] = getattr(meta,attr)
+    return meta_attrs
 
 
 class ModelMetaclass(type):
@@ -158,19 +168,13 @@ class ModelMetaclass(type):
         if not parents:
             return cls
         #  Set up the cls.meta object, inheriting from base classes
-        cls.meta = Meta(name,attrs.get("meta"))
+        meta_attrs = {}
         for base in bases:
-            if not isinstance(base,ModelMetaclass):
-                continue
-            if not hasattr(base,"meta"):
-                continue
-            for attr in dir(base.meta):
-                if attr.startswith("_"):
-                    continue
-                if getattr(cls.meta,attr) is None:
-                    val = getattr(base.meta,attr)
-                    if val is not None:
-                        setattr(cls.meta,attr,val)
+            if isinstance(base,ModelMetaclass) and hasattr(base,"meta"):
+                meta_attrs.update(_meta_attributes(base.meta))
+        meta_attrs.pop("tagname",None)
+        meta_attrs.update(_meta_attributes(attrs.get("meta",None)))
+        cls.meta = Meta(name,meta_attrs)
         #  Create ordered list of field objects, telling each about their
         #  name and containing class.  Inherit fields from base classes
         #  only if not overridden on the class itself.
