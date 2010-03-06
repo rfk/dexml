@@ -102,7 +102,7 @@ class PARSE_SKIP:
     """Constant returned by a Field when it cannot parse the given node."""
     pass
 class PARSE_CHILDREN:
-    """Constant returned by a Field when it found its container tag."""
+    """Constant returned by a Field to parse children from its container tag."""
     pass
 
 class Meta:
