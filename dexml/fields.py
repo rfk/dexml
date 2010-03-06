@@ -445,12 +445,27 @@ class List(Field):
 
     The properties 'minlength' and 'maxlength' control the allowable length
     of the list.
+    The 'tagname' property sets the 'wrapper' tag which acts as container
+    for list items, for example:
+
+      class MyModel(Model):
+          items = fields.List(fields.String(tagname="item"),
+                              tagname = 'list')
+
+    Corresponding to XML such as:
+
+      <MyModel><list><item>one</item><item>two</item></list></MyModel>
+
+    This wrapper tag is rendered if list is not empty and is transparent
+    for list item access.
+
     """
 
     class arguments(Field.arguments):
         field = None
         minlength = None
         maxlength = None
+        tagname = None
 
     def __init__(self,field,**kwds):
         if isinstance(field,Field):
@@ -480,6 +495,8 @@ class List(Field):
         return self.__get__(instance,owner)
 
     def parse_child_node(self,obj,node):
+        if self.tagname and node.tagName == self.tagname:
+            return dexml.PARSE_CHILDREN
         tmpobj = _AttrBucket()
         res = self.field.parse_child_node(tmpobj,node)
         if res is dexml.PARSE_MORE:
@@ -506,9 +523,14 @@ class List(Field):
                 raise dexml.RenderError("Field '%s': not enough items" % (self.field_name,))
         if self.maxlength is not None and len(items) > self.maxlength:
             raise dexml.RenderError("too many items")
-        for item in items:
-            for data in self.field.render_children(obj,item,nsmap):
-                yield data
+        if self.tagname:
+            children = "".join(data for item in items for data in self.field.render_children(obj,item,nsmap))
+            if children:
+                yield children.join(('<%s>'%self.tagname, '</%s>'%self.tagname))
+        else:
+            for item in items:
+                for data in self.field.render_children(obj,item,nsmap):
+                    yield data
 
 
 class Dict(Field):
@@ -526,13 +548,40 @@ class Dict(Field):
 
     Corresponding to XML such as:
 
-      <MyModel><MyObject><name>object1</name><attr>val1</attr></MyObject></MyModel>
+      <MyModel><MyObject><name>obj1</name><attr>val1</attr></MyObject></MyModel>
 
 
     The properties 'minlength' and 'maxlength' control the allowable size
     of the dict as in the List class.
-    If unique property set to True, parsing will raise exception on non-unique
-    key values
+    If 'unique' property is set to True, parsing will raise exception on
+    non-unique key values.
+    The 'dictclass' property control internal dictionary instance class,
+    its default value equals to dict.
+    The 'tagname' property sets the 'wrapper' tag which acts as container
+    for dict items, for example:
+
+      from collections import defaultdict
+      class MyObject(Model):
+          name = fields.String()
+          attr = fields.String()
+
+      class MyDict(defaultdict):
+          def __init__(self):
+              super(MyDict, self).__init__(MyObject)
+
+      class MyModel(Model):
+          objects = fields.Dict('MyObject', key = 'name',
+                                tagname = 'dict', dictclass = MyDict)
+
+      xml = '<MyModel><dict><MyObject name="obj1">'\
+            <attr>val1</attr></MyObject></dict></MyModel>'
+      mymodel = MyModel.parse(xml)
+      obj2 = mymodel['obj2']
+      print(obj2.name)
+      print(mymodel.render(fragment = True))
+
+    Wrapper tag is rendered if dict is not empty and is transparent
+    for dict item access.
     """
 
     class arguments(Field.arguments):
@@ -540,6 +589,8 @@ class Dict(Field):
         minlength = None
         maxlength = None
         unique = False
+        tagname = None
+        dictclass = dict
 
     def __init__(self, field, key, **kwds):
         if isinstance(field, Field):
@@ -566,10 +617,20 @@ class Dict(Field):
         val = super(Dict, self).__get__(instance, owner)
         if val is not None:
             return val
-        self.__set__(instance, dict())
+        class dictclass(self.dictclass):
+            key = self.key
+            def __setitem__(self, key, value):
+                keyval = getattr(value, self.key)
+                if keyval and keyval != key:
+                    raise ValueError('Key field value does not match dict key')
+                setattr(value, self.key, key)
+                super(dictclass, self).__setitem__(key, value)
+        self.__set__(instance, dictclass())
         return self.__get__(instance, owner)
 
     def parse_child_node(self, obj, node):
+        if self.tagname and node.tagName == self.tagname:
+            return dexml.PARSE_CHILDREN
         tmpobj = _AttrBucket()
         res = self.field.parse_child_node(tmpobj, node)
         if res is dexml.PARSE_MORE:
@@ -602,9 +663,14 @@ class Dict(Field):
                 raise dexml.RenderError("Field '%s': not enough items" % (self.field_name,))
         if self.maxlength is not None and len(items) > self.maxlength:
             raise dexml.RenderError("too many items")
-        for item in items.values():
-            for data in self.field.render_children(obj, item, nsmap):
-                yield data
+        if self.tagname:
+            children = "".join(data for item in items.values() for data in self.field.render_children(obj,item,nsmap))
+            if children:
+                yield children.join(('<%s>'%self.tagname, '</%s>'%self.tagname))
+        else:
+            for item in items.values():
+                for data in self.field.render_children(obj, item, nsmap):
+                    yield data
 
 
 class Choice(Field):

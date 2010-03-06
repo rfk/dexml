@@ -99,9 +99,11 @@ class PARSE_MORE:
     """Constant returned by a Field when it wants additional nodes to parse."""
     pass
 class PARSE_SKIP:
-    """Constnt returned by a Field when it cannot parse the given node."""
+    """Constant returned by a Field when it cannot parse the given node."""
     pass
-
+class PARSE_CHILDREN:
+    """Constant returned by a Field when it found its container tag."""
+    pass
 
 class Meta:
     """Class holding meta-information about a dexml.Model subclass.
@@ -293,6 +295,14 @@ class Model(object):
                         fields_found.append(field)
                     cur_field_idx = idx
                     break
+                if res is PARSE_CHILDREN:
+                    for subchild in child.childNodes:
+                        if field.parse_child_node(self,subchild) is PARSE_DONE:
+                            break
+                    if field not in fields_found:
+                        fields_found.append(field)
+                    cur_field_idx = idx
+                    break
                 idx += 1
             else:
                 self._handle_unparsed_node(child)
@@ -317,6 +327,14 @@ class Model(object):
                         if field not in fields_found:
                             fields_found.append(field)
                         break
+                if res is PARSE_CHILDREN:
+                    for subchild in child.childNodes:
+                        if field.parse_child_node(self,subchild) is PARSE_DONE:
+                            break
+                    if field not in fields_found:
+                        fields_found.append(field)
+                    cur_field_idx = idx
+                    break
                 idx += 1
             else:
                 self._handle_unparsed_node(child)
@@ -457,7 +475,8 @@ class Model(object):
             err = "Class '%s' got a non-element node"
             err = err % (cls.__name__,)
             raise ParseError(err)
-        if node.localName != cls.meta.tagname:
+        equals = (lambda a, b: a == b) if cls.meta.case_sensitive else (lambda a, b: a.lower() == b.lower())
+        if not equals(node.localName, cls.meta.tagname):
             err = "Class '%s' got tag '%s' (expected '%s')"
             err = err % (cls.__name__,node.localName,
                          cls.meta.tagname)

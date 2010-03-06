@@ -183,10 +183,13 @@ class TestDexml(unittest.TestCase):
         class pet(dexml.Model):
             name = fields.String()
             species = fields.String(required=False)
+        class reward(dexml.Model):
+            date = fields.String()
         class pets(dexml.Model):
             person = fields.Model()
             pets = fields.List("pet",minlength=1)
             notes = fields.List(fields.String(tagname="note"),maxlength=2)
+            rewards = fields.List("reward", tagname = "rewards")
 
         p = pets.parse("<pets><person name='ryan' age='26'/><pet name='riley' species='dog' /></pets>")
         self.assertEquals(p.person.name,"ryan")
@@ -217,29 +220,59 @@ class TestDexml(unittest.TestCase):
         p.notes.append("noted")
         self.assertEquals(p.render(fragment=True),'<pets><person name="lozz" age="25" /><pet name="riley" /><pet name="guppy" species="fish" /><note>noted</note></pets>')
 
+        p = pets.parse("<pets><person name='ryan' age='26'/><pet name='riley' species='dog' /><rewards><reward date='February 23, 2010'/><reward date='November 10, 2009'/></rewards></pets>")
+        self.assertEquals(len(p.rewards), 2)
+        self.assertEquals(p.rewards[1].date, 'November 10, 2009')
+        self.assertEquals(p.render(fragment = True), "<pets><person name='ryan' age='26'/><pet name='riley' species='dog' /><rewards><reward date='February 23, 2010'/><reward date='November 10, 2009'/></rewards></pets>")
+        self.assertRaises(dexml.ParseError, pets.parse, "<pets><person name='ryan' age='26'/><pet name='riley' species='dog' /><reward date='February 23, 2010'/><reward date='November 10, 2009'/></pets>")
 
     def test_dict_field(self):
         """Test operation of fields.Dict"""
-        class cobject(dexml.Model):
-            name = fields.String(tagname = 'name')
+        class item(dexml.Model):
+            name = fields.String()
             attr = fields.String(tagname = 'attr')
-        class collection(dexml.Model):
-            cobjects = fields.Dict(fields.Model(cobject), key = 'name')
-        
-        c = collection.parse("<collection><cobject><name>obj1</name><attr>val1</attr></cobject><cobject><name>obj2</name><attr>val2</attr></cobject></collection>")
-        
-        self.assertEquals(c.cobjects['obj1'].name, 'obj1')
-        self.assertEquals(c.cobjects['obj2'].attr, 'val2')
-        
-        self.assertEquals(c.render(fragment=True), '<collection><cobject><name>obj1</name><attr>val1</attr></cobject><cobject><name>obj2</name><attr>val2</attr></cobject></collection>')
-        
-        c.cobjects['obj3'] = cobject(name = 'obj3', attr = 'val3')
-        self.assertEquals(c.cobjects['obj3'].attr, 'val3')
-        
-        class collection(dexml.Model):
-            cobjects = fields.Dict(fields.Model(cobject), key = 'name', unique = True)
-        
-        self.assertRaises(dexml.ParseError, collection.parse, "<collection><cobject><name>obj1</name><attr>val1</attr></cobject><cobject><name>obj1</name><attr>val2</attr></cobject></collection>")
+        class obj(dexml.Model):
+            items = fields.Dict('item', key = 'name')
+
+        xml = '<obj><item name="item1"><attr>val1</attr></item><item name="item2"><attr>val2</attr></item></obj>'
+        o = obj.parse(xml)
+        self.assertEquals(len(o.items), 2)
+        self.assertEquals(o.items['item1'].name, 'item1')
+        self.assertEquals(o.items['item2'].attr, 'val2')
+        del o.items['item2']
+        self.assertEquals(o.render(fragment = True), '<obj><item name="item1"><attr>val1</attr></item></obj>')
+
+        o.items['item3'] = item(attr = 'val3')
+        self.assertEquals(o.items['item3'].attr, 'val3')
+        def _setitem():
+            o.items['item3'] = item(name = 'item2', attr = 'val3')
+        self.assertRaises(ValueError, _setitem)
+
+        class obj(dexml.Model):
+            items = fields.Dict('item', key = 'name', unique = True)
+        xml = '<obj><item name="item1"><attr>val1</attr></item><item name="item1"><attr>val2</attr></item></obj>'
+        self.assertRaises(dexml.ParseError, obj.parse, xml)
+
+        class obj(dexml.Model):
+            items = fields.Dict('item', key = 'name', tagname = 'items')
+        xml = '<obj><items><item name="item1"><attr>val1</attr></item><item name="item2"><attr>val2</attr></item></items></obj>'
+
+        o = obj.parse(xml)
+        self.assertEquals(len(o.items), 2)
+        self.assertEquals(o.items['item1'].name, 'item1')
+        self.assertEquals(o.items['item2'].attr, 'val2')
+        del o.items['item2']
+        self.assertEquals(o.render(fragment = True), '<obj><items><item name="item1"><attr>val1</attr></item></items></obj>')
+
+        from collections import defaultdict
+        class _dict(defaultdict):
+            def __init__(self):
+                super(_dict, self).__init__(item)
+
+        class obj(dexml.Model):
+            items = fields.Dict('item', key = 'name', dictclass = _dict)
+        o = obj()
+        self.assertEquals(o.items['item1'].name, 'item1')
 
     def test_choice_field(self):
         """Test operation of fields.Choice"""
