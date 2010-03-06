@@ -1,4 +1,12 @@
 
+v0.3.4:
+
+ * allow Model subclasses to inherit meta attributes from their base classes.
+   (again thanks to Alexander Vladimirov)
+ * allow List and Dict fields to specify a "wrapper" tag that groups the
+   contained items.  This tag doesn't show up in the object structure, it
+   is added and removed transparently during rendering and parsing.
+
 v0.3.3:
 
   * Dict field type; thanks to Alexander Vladimirov
