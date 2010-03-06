@@ -267,9 +267,9 @@ class Model(object):
             self._handle_unparsed_node(attr)
         #  Try to consume all child nodes
         if self.meta.order_sensitive:
-            self._parse_children_ordered(node,fields_found)
+            self._parse_children_ordered(node,self._fields,fields_found)
         else:
-            self._parse_children_unordered(node,fields_found)
+            self._parse_children_unordered(node,self._fields,fields_found)
         #  Check that all required fields have been found
         for field in self._fields:
             if field.required and field not in fields_found:
@@ -279,15 +279,15 @@ class Model(object):
         #  All done, return the instance so created
         return self
 
-    def _parse_children_ordered(self,node,fields_found):
+    def _parse_children_ordered(self,node,fields,fields_found):
         """Parse the children of the given node using strict field ordering."""
         cur_field_idx = 0 
         for child in node.childNodes:
             idx = cur_field_idx
             #  If we successfully break out of this loop, one of our
             #  fields has consumed the node.
-            while idx < len(self._fields):
-                field = self._fields[idx]
+            while idx < len(fields):
+                field = fields[idx]
                 res = field.parse_child_node(self,child)
                 if res is PARSE_DONE:
                     if field not in fields_found:
@@ -300,44 +300,37 @@ class Model(object):
                     cur_field_idx = idx
                     break
                 if res is PARSE_CHILDREN:
-                    for subchild in child.childNodes:
-                        if field.parse_child_node(self,subchild) is PARSE_DONE:
-                            break
-                    if field not in fields_found:
-                        fields_found.append(field)
+                    self._parse_children_ordered(child,[field],fields_found)
                     cur_field_idx = idx
                     break
                 idx += 1
             else:
                 self._handle_unparsed_node(child)
 
-    def _parse_children_unordered(self,node,fields_found):
+    def _parse_children_unordered(self,node,fields,fields_found):
         """Parse the children of the given node using loose field ordering."""
         done_fields = {}
         for child in node.childNodes:
             idx = 0
             #  If we successfully break out of this loop, one of our
             #  fields has consumed the node.
-            while idx < len(self._fields):
-                if idx not in done_fields:
-                    field = self._fields[idx]
-                    res = field.parse_child_node(self,child)
-                    if res is PARSE_DONE:
-                        done_fields[idx] = True
-                        if field not in fields_found:
-                            fields_found.append(field)
-                        break
-                    if res is PARSE_MORE:
-                        if field not in fields_found:
-                            fields_found.append(field)
-                        break
-                if res is PARSE_CHILDREN:
-                    for subchild in child.childNodes:
-                        if field.parse_child_node(self,subchild) is PARSE_DONE:
-                            break
+            while idx < len(fields):
+                if idx in done_fields:
+                    idx += 1
+                    continue
+                field = fields[idx]
+                res = field.parse_child_node(self,child)
+                if res is PARSE_DONE:
+                    done_fields[idx] = True
                     if field not in fields_found:
                         fields_found.append(field)
-                    cur_field_idx = idx
+                    break
+                if res is PARSE_MORE:
+                    if field not in fields_found:
+                        fields_found.append(field)
+                    break
+                if res is PARSE_CHILDREN:
+                    self._parse_children_unordered(child,[field],fields_found)
                     break
                 idx += 1
             else:

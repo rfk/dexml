@@ -495,8 +495,18 @@ class List(Field):
         return self.__get__(instance,owner)
 
     def parse_child_node(self,obj,node):
-        if self.tagname and node.tagName == self.tagname:
-            return dexml.PARSE_CHILDREN
+        #  If out children are inside a grouping tag, parse
+        #  that first.  The presence of this is indicated by
+        #  setting the empty list on the target object.
+        if self.tagname:
+            val = super(List,self).__get__(obj)
+            if val is None:
+                if node.tagName == self.tagname:
+                    self.__set__(obj,[])
+                    return dexml.PARSE_CHILDREN
+                else:
+                    return dexml.PARSE_SKIP
+        #  Now we just parse each child node.
         tmpobj = _AttrBucket()
         res = self.field.parse_child_node(tmpobj,node)
         if res is dexml.PARSE_MORE:
@@ -536,7 +546,7 @@ class List(Field):
 class Dict(Field):
     """Field subclass representing a dict of fields keyed by unique attribute value.
 
-    This field corresponds to a indexed dict of other fields.  You would
+    This field corresponds to an indexed dict of other fields.  You would
     declare it like so:
 
       class MyObject(Model):
@@ -555,8 +565,8 @@ class Dict(Field):
     of the dict as in the List class.
     If 'unique' property is set to True, parsing will raise exception on
     non-unique key values.
-    The 'dictclass' property control internal dictionary instance class,
-    its default value equals to dict.
+    The 'dictclass' property controls the internal dict-like class used by
+    the fielt.  By default it is the standard dict class.
     The 'tagname' property sets the 'wrapper' tag which acts as container
     for dict items, for example:
 
@@ -580,7 +590,7 @@ class Dict(Field):
       print(obj2.name)
       print(mymodel.render(fragment = True))
 
-    Wrapper tag is rendered if dict is not empty and is transparent
+    The wrapper tag is rendered if the dict is not empty, and is transparent
     for dict item access.
     """
 
@@ -629,8 +639,18 @@ class Dict(Field):
         return self.__get__(instance, owner)
 
     def parse_child_node(self, obj, node):
-        if self.tagname and node.tagName == self.tagname:
-            return dexml.PARSE_CHILDREN
+        #  If out children are inside a grouping tag, parse
+        #  that first.  The presence of this is indicated by
+        #  setting the empty list on the target object.
+        if self.tagname:
+            val = super(Dict,self).__get__(obj)
+            if val is None:
+                if node.tagName == self.tagname:
+                    self.__get__(obj)
+                    return dexml.PARSE_CHILDREN
+                else:
+                    return dexml.PARSE_SKIP
+        #  Now we just parse each child node.
         tmpobj = _AttrBucket()
         res = self.field.parse_child_node(tmpobj, node)
         if res is dexml.PARSE_MORE:

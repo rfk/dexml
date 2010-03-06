@@ -223,8 +223,10 @@ class TestDexml(unittest.TestCase):
         p = pets.parse("<pets><person name='ryan' age='26'/><pet name='riley' species='dog' /><rewards><reward date='February 23, 2010'/><reward date='November 10, 2009'/></rewards></pets>")
         self.assertEquals(len(p.rewards), 2)
         self.assertEquals(p.rewards[1].date, 'November 10, 2009')
-        self.assertEquals(p.render(fragment = True), "<pets><person name='ryan' age='26'/><pet name='riley' species='dog' /><rewards><reward date='February 23, 2010'/><reward date='November 10, 2009'/></rewards></pets>")
-        self.assertRaises(dexml.ParseError, pets.parse, "<pets><person name='ryan' age='26'/><pet name='riley' species='dog' /><reward date='February 23, 2010'/><reward date='November 10, 2009'/></pets>")
+        self.assertEquals(p.render(fragment = True), '<pets><person name="ryan" age="26" /><pet name="riley" species="dog" /><rewards><reward date="February 23, 2010" /><reward date="November 10, 2009" /></rewards></pets>')
+
+        pets.meta.ignore_unknown_elements = False
+        self.assertRaises(dexml.ParseError, pets.parse, "<pets><person name='ryan' age='26' /><pet name='riley' species='dog' /><reward date='February 23, 2010'/><reward date='November 10, 2009' /></pets>")
 
     def test_dict_field(self):
         """Test operation of fields.Dict"""
