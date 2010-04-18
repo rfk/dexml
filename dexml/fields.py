@@ -236,14 +236,16 @@ class Value(Field):
                     prefix = m_meta.namespace_prefix
                     yield '%s:%s="%s"' % (prefix,nm,self.render_value(val),)
                 else:
-                    try:
-                        prefix = nsmap[ns][0]
-                    except (KeyError,IndexError):
+                    for (p,n) in nsmap.iteritems():
+                        if ns == n[0]:
+                            prefix = p
+                            break
+                    else:
                         prefix = "p" + str(random.randint(0,10000))
                         while prefix in nsmap:
                             prefix = "p" + str(random.randint(0,10000))
+                        yield 'xmlns:%s="%s"' % (prefix,ns,)
                     yield '%s:%s="%s"' % (prefix,nm,self.render_value(val),)
-                    yield 'xmlns:%s="%s"' % (prefix,ns,)
 
     def render_children(self,obj,val,nsmap):
         if val is not None and val is not self.default and self.tagname:
@@ -271,9 +273,11 @@ class Value(Field):
                 elif ns == m_meta.namespace and m_meta.namespace_prefix:
                     prefix = m_meta.namespace_prefix
                 else:
-                    try:
-                        prefix = nsmap[ns][0]
-                    except (KeyError,IndexError):
+                    for (p,n) in nsmap.iteritems():
+                        if ns == n[0]:
+                            prefix = p
+                            break
+                    else:
                         prefix = "p" + str(random.randint(0,10000))
                         while prefix in nsmap:
                             prefix = "p" + str(random.randint(0,10000))
