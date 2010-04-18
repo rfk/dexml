@@ -5,6 +5,7 @@
 """
 
 import dexml
+import random
 from xml.sax.saxutils import escape, quoteattr
 
 #  Global counter tracking the order in which fields are declared.
@@ -92,7 +93,7 @@ class Field(object):
         """
         pass
 
-    def render_attributes(self,obj,val):
+    def render_attributes(self,obj,val,nsmap):
         """Render any attributes that this field manages."""
         return []
 
@@ -163,6 +164,8 @@ class Value(Field):
             self.required = False
 
     def _get_attrname(self):
+        if self.__dict__["tagname"]:
+            return None
         attrname = self.__dict__['attrname']
         if not attrname:
             attrname = self.field_name
@@ -222,27 +225,60 @@ class Value(Field):
         self.__set__(obj,self.parse_value("".join(vals)))
         return dexml.PARSE_DONE
 
-    def render_attributes(self,obj,val):
-        if val is not None and val is not self.default and not self.tagname:
-            yield '%s="%s"' % (self.attrname,self.render_value(val),)
-        # TODO: support (ns,attrname) form
+    def render_attributes(self,obj,val,nsmap):
+        if val is not None and val is not self.default and self.attrname:
+            if isinstance(self.attrname,basestring):
+                yield '%s="%s"' % (self.attrname,self.render_value(val),)
+            else:
+                m_meta = self.model_class.meta
+                (ns,nm) = self.attrname
+                if ns == m_meta.namespace and m_meta.namespace_prefix:
+                    prefix = m_meta.namespace_prefix
+                    yield '%s:%s="%s"' % (prefix,nm,self.render_value(val),)
+                else:
+                    try:
+                        prefix = nsmap[ns][0]
+                    except (KeyError,IndexError):
+                        prefix = "p" + str(random.randint(0,10000))
+                        while prefix in nsmap:
+                            prefix = "p" + str(random.randint(0,10000))
+                    yield '%s:%s="%s"' % (prefix,nm,self.render_value(val),)
+                    yield 'xmlns:%s="%s"' % (prefix,ns,)
 
     def render_children(self,obj,val,nsmap):
         if val is not None and val is not self.default and self.tagname:
             val = self.render_value(val)
-            if isinstance(self.tagname,basestring):
-                prefix = self.model_class.meta.namespace_prefix
+            def render_tag(prefix,localName,attrs):
                 if val:
                     if prefix:
-                        yield "<%s:%s>%s</%s:%s>" % (prefix,self.tagname,val,prefix,self.tagname)
+                        return "<%s:%s%s>%s</%s:%s>" % (prefix,localName,attrs,val,prefix,localName)
                     else:
-                        yield "<%s>%s</%s>" % (self.tagname,val,self.tagname)
+                        return "<%s%s>%s</%s>" % (localName,attrs,val,localName)
                 else:
                     if prefix:
-                        yield "<%s:%s />" % (prefix,self.tagname,)
+                        return "<%s:%s%s />" % (prefix,localName,attrs,)
                     else:
-                        yield "<%s />" % (self.tagname,)
-        # TODO: support (ns,tagname) form
+                        return "<%s%s />" % (localName,attrs)
+            attrs = ""
+            if isinstance(self.tagname,basestring):
+                prefix = self.model_class.meta.namespace_prefix
+                localName = self.tagname
+            else:
+                m_meta = self.model_class.meta
+                (ns,localName) = self.tagname
+                if not ns:
+                    prefix = None
+                elif ns == m_meta.namespace and m_meta.namespace_prefix:
+                    prefix = m_meta.namespace_prefix
+                else:
+                    try:
+                        prefix = nsmap[ns][0]
+                    except (KeyError,IndexError):
+                        prefix = "p" + str(random.randint(0,10000))
+                        while prefix in nsmap:
+                            prefix = "p" + str(random.randint(0,10000))
+                        attrs = ' xmlns:%s="%s"' % (prefix,ns)
+            yield render_tag(prefix,localName,attrs)
 
     def parse_value(self,val):
         return val
@@ -385,7 +421,7 @@ class Model(Field):
             self.__set__(obj,inst)
             return dexml.PARSE_DONE
 
-    def render_attributes(self,obj,val):
+    def render_attributes(self,obj,val,nsmap):
         return []
 
     def render_children(self,obj,val,nsmap):
@@ -409,12 +445,27 @@ class List(Field):
 
     The properties 'minlength' and 'maxlength' control the allowable length
     of the list.
+    The 'tagname' property sets the 'wrapper' tag which acts as container
+    for list items, for example:
+
+      class MyModel(Model):
+          items = fields.List(fields.String(tagname="item"),
+                              tagname = 'list')
+
+    Corresponding to XML such as:
+
+      <MyModel><list><item>one</item><item>two</item></list></MyModel>
+
+    This wrapper tag is rendered if list is not empty and is transparent
+    for list item access.
+
     """
 
     class arguments(Field.arguments):
         field = None
         minlength = None
         maxlength = None
+        tagname = None
 
     def __init__(self,field,**kwds):
         if isinstance(field,Field):
@@ -444,6 +495,18 @@ class List(Field):
         return self.__get__(instance,owner)
 
     def parse_child_node(self,obj,node):
+        #  If out children are inside a grouping tag, parse
+        #  that first.  The presence of this is indicated by
+        #  setting the empty list on the target object.
+        if self.tagname:
+            val = super(List,self).__get__(obj)
+            if val is None:
+                if node.tagName == self.tagname:
+                    self.__set__(obj,[])
+                    return dexml.PARSE_CHILDREN
+                else:
+                    return dexml.PARSE_SKIP
+        #  Now we just parse each child node.
         tmpobj = _AttrBucket()
         res = self.field.parse_child_node(tmpobj,node)
         if res is dexml.PARSE_MORE:
@@ -470,9 +533,164 @@ class List(Field):
                 raise dexml.RenderError("Field '%s': not enough items" % (self.field_name,))
         if self.maxlength is not None and len(items) > self.maxlength:
             raise dexml.RenderError("too many items")
-        for item in items:
-            for data in self.field.render_children(obj,item,nsmap):
-                yield data
+        if self.tagname:
+            children = "".join(data for item in items for data in self.field.render_children(obj,item,nsmap))
+            if children:
+                yield children.join(('<%s>'%self.tagname, '</%s>'%self.tagname))
+        else:
+            for item in items:
+                for data in self.field.render_children(obj,item,nsmap):
+                    yield data
+
+
+class Dict(Field):
+    """Field subclass representing a dict of fields keyed by unique attribute value.
+
+    This field corresponds to an indexed dict of other fields.  You would
+    declare it like so:
+
+      class MyObject(Model):
+          name = fields.String(tagname = 'name')
+          attr = fields.String(tagname = 'attr')
+
+      class MyModel(Model):
+          items = fields.Dict(fields.Model(MyObject), key = 'name')
+
+    Corresponding to XML such as:
+
+      <MyModel><MyObject><name>obj1</name><attr>val1</attr></MyObject></MyModel>
+
+
+    The properties 'minlength' and 'maxlength' control the allowable size
+    of the dict as in the List class.
+    If 'unique' property is set to True, parsing will raise exception on
+    non-unique key values.
+    The 'dictclass' property controls the internal dict-like class used by
+    the fielt.  By default it is the standard dict class.
+    The 'tagname' property sets the 'wrapper' tag which acts as container
+    for dict items, for example:
+
+      from collections import defaultdict
+      class MyObject(Model):
+          name = fields.String()
+          attr = fields.String()
+
+      class MyDict(defaultdict):
+          def __init__(self):
+              super(MyDict, self).__init__(MyObject)
+
+      class MyModel(Model):
+          objects = fields.Dict('MyObject', key = 'name',
+                                tagname = 'dict', dictclass = MyDict)
+
+      xml = '<MyModel><dict><MyObject name="obj1">'\
+            <attr>val1</attr></MyObject></dict></MyModel>'
+      mymodel = MyModel.parse(xml)
+      obj2 = mymodel['obj2']
+      print(obj2.name)
+      print(mymodel.render(fragment = True))
+
+    The wrapper tag is rendered if the dict is not empty, and is transparent
+    for dict item access.
+    """
+
+    class arguments(Field.arguments):
+        field = None
+        minlength = None
+        maxlength = None
+        unique = False
+        tagname = None
+        dictclass = dict
+
+    def __init__(self, field, key, **kwds):
+        if isinstance(field, Field):
+            kwds["field"] = field
+        else:
+            kwds["field"] = Model(field, **kwds)
+        super(Dict, self).__init__(**kwds)
+        if not self.minlength:
+            self.required = False
+        self.key = key
+
+    def _get_field(self):
+        field = self.__dict__["field"]
+        if not hasattr(field, "field_name"):
+            field.field_name = self.field_name
+        if not hasattr(field, "model_class"):
+            field.model_class = self.model_class
+        return field
+    def _set_field(self, field):
+        self.__dict__["field"] = field
+    field = property(_get_field, _set_field)
+
+    def __get__(self,instance,owner=None):
+        val = super(Dict, self).__get__(instance, owner)
+        if val is not None:
+            return val
+        class dictclass(self.dictclass):
+            key = self.key
+            def __setitem__(self, key, value):
+                keyval = getattr(value, self.key)
+                if keyval and keyval != key:
+                    raise ValueError('Key field value does not match dict key')
+                setattr(value, self.key, key)
+                super(dictclass, self).__setitem__(key, value)
+        self.__set__(instance, dictclass())
+        return self.__get__(instance, owner)
+
+    def parse_child_node(self, obj, node):
+        #  If out children are inside a grouping tag, parse
+        #  that first.  The presence of this is indicated by
+        #  setting the empty list on the target object.
+        if self.tagname:
+            val = super(Dict,self).__get__(obj)
+            if val is None:
+                if node.tagName == self.tagname:
+                    self.__get__(obj)
+                    return dexml.PARSE_CHILDREN
+                else:
+                    return dexml.PARSE_SKIP
+        #  Now we just parse each child node.
+        tmpobj = _AttrBucket()
+        res = self.field.parse_child_node(tmpobj, node)
+        if res is dexml.PARSE_MORE:
+            raise RuntimeError("items in a dict cannot return PARSE_MORE")
+        if res is dexml.PARSE_DONE:
+            items = self.__get__(obj)
+            val = getattr(tmpobj, self.field_name)
+            try:
+                key = getattr(val, self.key)
+            except AttributeError:
+                raise dexml.ParseError("Key field '%s' required but not found in dict value" % (self.key, ))
+            if self.unique and key in items:
+                raise dexml.ParseError("Key '%s' already exists in dict" % (key,))
+            items[key] = val
+            return dexml.PARSE_MORE
+        else:
+            return dexml.PARSE_SKIP
+
+    def parse_done(self, obj):
+        items = self.__get__(obj)
+        if self.minlength is not None and len(items) < self.minlength:
+            if self.required or len(items) != 0:
+                raise dexml.ParseError("Field '%s': not enough items" % (self.field_name,))
+        if self.maxlength is not None and len(items) > self.maxlength:
+            raise dexml.ParseError("Field '%s': too many items" % (self.field_name,))
+
+    def render_children(self, obj, items, nsmap):
+        if self.minlength is not None and len(items) < self.minlength:
+            if self.required:
+                raise dexml.RenderError("Field '%s': not enough items" % (self.field_name,))
+        if self.maxlength is not None and len(items) > self.maxlength:
+            raise dexml.RenderError("too many items")
+        if self.tagname:
+            children = "".join(data for item in items.values() for data in self.field.render_children(obj,item,nsmap))
+            if children:
+                yield children.join(('<%s>'%self.tagname, '</%s>'%self.tagname))
+        else:
+            for item in items.values():
+                for data in self.field.render_children(obj, item, nsmap):
+                    yield data
 
 
 class Choice(Field):

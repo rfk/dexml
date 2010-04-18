@@ -183,10 +183,13 @@ class TestDexml(unittest.TestCase):
         class pet(dexml.Model):
             name = fields.String()
             species = fields.String(required=False)
+        class reward(dexml.Model):
+            date = fields.String()
         class pets(dexml.Model):
             person = fields.Model()
             pets = fields.List("pet",minlength=1)
             notes = fields.List(fields.String(tagname="note"),maxlength=2)
+            rewards = fields.List("reward", tagname = "rewards")
 
         p = pets.parse("<pets><person name='ryan' age='26'/><pet name='riley' species='dog' /></pets>")
         self.assertEquals(p.person.name,"ryan")
@@ -217,6 +220,61 @@ class TestDexml(unittest.TestCase):
         p.notes.append("noted")
         self.assertEquals(p.render(fragment=True),'<pets><person name="lozz" age="25" /><pet name="riley" /><pet name="guppy" species="fish" /><note>noted</note></pets>')
 
+        p = pets.parse("<pets><person name='ryan' age='26'/><pet name='riley' species='dog' /><rewards><reward date='February 23, 2010'/><reward date='November 10, 2009'/></rewards></pets>")
+        self.assertEquals(len(p.rewards), 2)
+        self.assertEquals(p.rewards[1].date, 'November 10, 2009')
+        self.assertEquals(p.render(fragment = True), '<pets><person name="ryan" age="26" /><pet name="riley" species="dog" /><rewards><reward date="February 23, 2010" /><reward date="November 10, 2009" /></rewards></pets>')
+
+        pets.meta.ignore_unknown_elements = False
+        self.assertRaises(dexml.ParseError, pets.parse, "<pets><person name='ryan' age='26' /><pet name='riley' species='dog' /><reward date='February 23, 2010'/><reward date='November 10, 2009' /></pets>")
+
+    def test_dict_field(self):
+        """Test operation of fields.Dict"""
+        class item(dexml.Model):
+            name = fields.String()
+            attr = fields.String(tagname = 'attr')
+        class obj(dexml.Model):
+            items = fields.Dict('item', key = 'name')
+
+        xml = '<obj><item name="item1"><attr>val1</attr></item><item name="item2"><attr>val2</attr></item></obj>'
+        o = obj.parse(xml)
+        self.assertEquals(len(o.items), 2)
+        self.assertEquals(o.items['item1'].name, 'item1')
+        self.assertEquals(o.items['item2'].attr, 'val2')
+        del o.items['item2']
+        self.assertEquals(o.render(fragment = True), '<obj><item name="item1"><attr>val1</attr></item></obj>')
+
+        o.items['item3'] = item(attr = 'val3')
+        self.assertEquals(o.items['item3'].attr, 'val3')
+        def _setitem():
+            o.items['item3'] = item(name = 'item2', attr = 'val3')
+        self.assertRaises(ValueError, _setitem)
+
+        class obj(dexml.Model):
+            items = fields.Dict('item', key = 'name', unique = True)
+        xml = '<obj><item name="item1"><attr>val1</attr></item><item name="item1"><attr>val2</attr></item></obj>'
+        self.assertRaises(dexml.ParseError, obj.parse, xml)
+
+        class obj(dexml.Model):
+            items = fields.Dict('item', key = 'name', tagname = 'items')
+        xml = '<obj><items><item name="item1"><attr>val1</attr></item><item name="item2"><attr>val2</attr></item></items></obj>'
+
+        o = obj.parse(xml)
+        self.assertEquals(len(o.items), 2)
+        self.assertEquals(o.items['item1'].name, 'item1')
+        self.assertEquals(o.items['item2'].attr, 'val2')
+        del o.items['item2']
+        self.assertEquals(o.render(fragment = True), '<obj><items><item name="item1"><attr>val1</attr></item></items></obj>')
+
+        from collections import defaultdict
+        class _dict(defaultdict):
+            def __init__(self):
+                super(_dict, self).__init__(item)
+
+        class obj(dexml.Model):
+            items = fields.Dict('item', key = 'name', dictclass = _dict)
+        o = obj()
+        self.assertEquals(o.items['item1'].name, 'item1')
 
     def test_choice_field(self):
         """Test operation of fields.Choice"""
@@ -297,6 +355,55 @@ class TestDexml(unittest.TestCase):
         b = bucket.parse("<bucket xmlns='bucket-uri'><bucket><hello /></bucket></bucket>")
         b2 = bucket.parse("".join(fields.XmlNode.render_children(b,b.contents,{})))
         self.assertEquals(b2.contents.tagName,"hello")
+
+    def test_namespaced_attrs(self):
+        class nsa(dexml.Model):
+            f1 = fields.Integer(attrname=("test:","f1"))
+        n = nsa.parse("<nsa t:f1='7' xmlns:t='test:' />")
+        self.assertEquals(n.f1,7)
+        n2 = nsa.parse(n.render())
+        self.assertEquals(n2.f1,7)
+
+        class nsa_decl(dexml.Model):
+            class meta:
+                tagname = "nsa"
+                namespace = "test:"
+                namespace_prefix = "t"
+            f1 = fields.Integer(attrname=("test:","f1"))
+        n = nsa_decl.parse("<t:nsa t:f1='7' xmlns:t='test:' />")
+        self.assertEquals(n.f1,7)
+        self.assertEquals(n.render(fragment=True),'<t:nsa xmlns:t="test:" t:f1="7" />')
+
+    def test_namespaced_children(self):
+        class nsc(dexml.Model):
+            f1 = fields.Integer(tagname=("test:","f1"))
+        n = nsc.parse("<nsc xmlns:t='test:'><t:f1>7</t:f1></nsc>")
+        self.assertEquals(n.f1,7)
+        n2 = nsc.parse(n.render())
+        self.assertEquals(n2.f1,7)
+
+        n = nsc.parse("<nsc><f1 xmlns='test:'>7</f1></nsc>")
+        self.assertEquals(n.f1,7)
+        n2 = nsc.parse(n.render())
+        self.assertEquals(n2.f1,7)
+
+        class nsc_decl(dexml.Model):
+            class meta:
+                tagname = "nsc"
+                namespace = "test:"
+                namespace_prefix = "t"
+            f1 = fields.Integer(tagname=("test:","f1"))
+        n = nsc_decl.parse("<t:nsc xmlns:t='test:'><t:f1>7</t:f1></t:nsc>")
+        self.assertEquals(n.f1,7)
+        n2 = nsc_decl.parse(n.render())
+        self.assertEquals(n2.f1,7)
+
+        n = nsc_decl.parse("<nsc xmlns='test:'><f1>7</f1></nsc>")
+        self.assertEquals(n.f1,7)
+        n2 = nsc_decl.parse(n.render())
+        self.assertEquals(n2.f1,7)
+
+        self.assertEquals(n2.render(fragment=True),'<t:nsc xmlns:t="test:"><t:f1>7</t:f1></t:nsc>')
 
     def test_order_sensitive(self):
         """Test operation of order-sensitive and order-insensitive parsing"""

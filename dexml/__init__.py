@@ -64,7 +64,7 @@ classes for more details:
 
 __ver_major__ = 0
 __ver_minor__ = 3
-__ver_patch__ = 2
+__ver_patch__ = 4
 __ver_sub__ = ""
 __version__ = "%d.%d.%d%s" % (__ver_major__,__ver_minor__,__ver_patch__,__ver_sub__)
                               
@@ -99,9 +99,11 @@ class PARSE_MORE:
     """Constant returned by a Field when it wants additional nodes to parse."""
     pass
 class PARSE_SKIP:
-    """Constnt returned by a Field when it cannot parse the given node."""
+    """Constant returned by a Field when it cannot parse the given node."""
     pass
-
+class PARSE_CHILDREN:
+    """Constant returned by a Field to parse children from its container tag."""
+    pass
 
 class Meta:
     """Class holding meta-information about a dexml.Model subclass.
@@ -133,11 +135,21 @@ class Meta:
                  "case_sensitive":True,
                  "order_sensitive":True}
 
-    def __init__(self,name,meta):
+    def __init__(self,name,meta_attrs):
         for (attr,default) in self._defaults.items():
-            setattr(self,attr,getattr(meta,attr,default))
+            setattr(self,attr,meta_attrs.get(attr,default))
         if self.tagname is None:
             self.tagname = name
+
+
+def _meta_attributes(meta):
+    """Extract attributes from a "meta" object."""
+    meta_attrs = {}
+    if meta:
+        for attr in dir(meta):
+            if not attr.startswith("_"):
+                meta_attrs[attr] = getattr(meta,attr)
+    return meta_attrs
 
 
 class ModelMetaclass(type):
@@ -157,19 +169,13 @@ class ModelMetaclass(type):
         if not parents:
             return cls
         #  Set up the cls.meta object, inheriting from base classes
-        cls.meta = Meta(name,attrs.get("meta"))
+        meta_attrs = {}
         for base in bases:
-            if not isinstance(base,ModelMetaclass):
-                continue
-            if not hasattr(base,"meta"):
-                continue
-            for attr in dir(base.meta):
-                if attr.startswith("_"):
-                    continue
-                if getattr(cls.meta,attr) is None:
-                    val = getattr(base.meta,attr)
-                    if val is not None:
-                        setattr(cls.meta,attr,val)
+            if isinstance(base,ModelMetaclass) and hasattr(base,"meta"):
+                meta_attrs.update(_meta_attributes(base.meta))
+        meta_attrs.pop("tagname",None)
+        meta_attrs.update(_meta_attributes(attrs.get("meta",None)))
+        cls.meta = Meta(name,meta_attrs)
         #  Create ordered list of field objects, telling each about their
         #  name and containing class.  Inherit fields from base classes
         #  only if not overridden on the class itself.
@@ -262,9 +268,9 @@ class Model(object):
             self._handle_unparsed_node(attr)
         #  Try to consume all child nodes
         if self.meta.order_sensitive:
-            self._parse_children_ordered(node,fields_found)
+            self._parse_children_ordered(node,self._fields,fields_found)
         else:
-            self._parse_children_unordered(node,fields_found)
+            self._parse_children_unordered(node,self._fields,fields_found)
         #  Check that all required fields have been found
         for field in self._fields:
             if field.required and field not in fields_found:
@@ -274,15 +280,15 @@ class Model(object):
         #  All done, return the instance so created
         return self
 
-    def _parse_children_ordered(self,node,fields_found):
+    def _parse_children_ordered(self,node,fields,fields_found):
         """Parse the children of the given node using strict field ordering."""
         cur_field_idx = 0 
         for child in node.childNodes:
             idx = cur_field_idx
             #  If we successfully break out of this loop, one of our
             #  fields has consumed the node.
-            while idx < len(self._fields):
-                field = self._fields[idx]
+            while idx < len(fields):
+                field = fields[idx]
                 res = field.parse_child_node(self,child)
                 if res is PARSE_DONE:
                     if field not in fields_found:
@@ -294,30 +300,39 @@ class Model(object):
                         fields_found.append(field)
                     cur_field_idx = idx
                     break
+                if res is PARSE_CHILDREN:
+                    self._parse_children_ordered(child,[field],fields_found)
+                    cur_field_idx = idx
+                    break
                 idx += 1
             else:
                 self._handle_unparsed_node(child)
 
-    def _parse_children_unordered(self,node,fields_found):
+    def _parse_children_unordered(self,node,fields,fields_found):
         """Parse the children of the given node using loose field ordering."""
         done_fields = {}
         for child in node.childNodes:
             idx = 0
             #  If we successfully break out of this loop, one of our
             #  fields has consumed the node.
-            while idx < len(self._fields):
-                if idx not in done_fields:
-                    field = self._fields[idx]
-                    res = field.parse_child_node(self,child)
-                    if res is PARSE_DONE:
-                        done_fields[idx] = True
-                        if field not in fields_found:
-                            fields_found.append(field)
-                        break
-                    if res is PARSE_MORE:
-                        if field not in fields_found:
-                            fields_found.append(field)
-                        break
+            while idx < len(fields):
+                if idx in done_fields:
+                    idx += 1
+                    continue
+                field = fields[idx]
+                res = field.parse_child_node(self,child)
+                if res is PARSE_DONE:
+                    done_fields[idx] = True
+                    if field not in fields_found:
+                        fields_found.append(field)
+                    break
+                if res is PARSE_MORE:
+                    if field not in fields_found:
+                        fields_found.append(field)
+                    break
+                if res is PARSE_CHILDREN:
+                    self._parse_children_unordered(child,[field],fields_found)
+                    break
                 idx += 1
             else:
                 self._handle_unparsed_node(child)
@@ -347,7 +362,12 @@ class Model(object):
         leading "<?xml>" declaration.  To generate an XML fragment set
         the 'fragment' argument to True.
 
-        TODO: explain the 'nsmap' argument
+        The 'nsmap' argument maintains the current stack of namespace
+        prefixes used during rendering; it maps each prefix to a list of
+        namespaces, with the first item in the list being the current
+        namespace for that prefix.  This argument should never be given
+        directly; it is for internal use by the rendering routines.
+         
         """
         if nsmap is None:
             nsmap = {}
@@ -400,7 +420,7 @@ class Model(object):
         num = 0
         for f in self._fields:
             val = getattr(self,f.field_name)
-            attrs.extend(f.render_attributes(self,val))
+            attrs.extend(f.render_attributes(self,val,nsmap))
             children.extend(f.render_children(self,val,nsmap))
             if len(attrs) + len(children) == num and f.required:
                 raise RenderError("Field '%s' is missing" % (f.field_name,))
@@ -453,7 +473,8 @@ class Model(object):
             err = "Class '%s' got a non-element node"
             err = err % (cls.__name__,)
             raise ParseError(err)
-        if node.localName != cls.meta.tagname:
+        equals = (lambda a, b: a == b) if cls.meta.case_sensitive else (lambda a, b: a.lower() == b.lower())
+        if not equals(node.localName, cls.meta.tagname):
             err = "Class '%s' got tag '%s' (expected '%s')"
             err = err % (cls.__name__,node.localName,
                          cls.meta.tagname)
