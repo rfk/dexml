@@ -435,3 +435,17 @@ class TestDexml(unittest.TestCase):
         self.assertEquals(j.notes,["note1","note2"])
         self.assertEquals(j.amount,7)
 
+    def test_namespace_prefix_generation(self):
+        class A(dexml.Model):
+            class meta:
+                namespace='http://xxx'
+                namespace_prefix='x'
+            a = fields.String(tagname=('http://yyy','a'))
+        class B(dexml.Model):
+            class meta:
+                namespace='http://yyy'
+                namespace_prefix='y'
+            b = fields.Model(A)
+        b1 = B(b=A(a='value'))
+        self.assertEquals(b1.render(),'<?xml version="1.0" ?><y:B xmlns:y="http://yyy"><x:A xmlns:x="http://xxx"><y:a>value</y:a></x:A></y:B>')
+

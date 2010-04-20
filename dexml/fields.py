@@ -270,7 +270,7 @@ class Value(Field):
                 (ns,localName) = self.tagname
                 if not ns:
                     prefix = None
-                elif ns == m_meta.namespace and m_meta.namespace_prefix:
+                elif ns == m_meta.namespace:
                     prefix = m_meta.namespace_prefix
                 else:
                     for (p,n) in nsmap.iteritems():
