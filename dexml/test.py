@@ -124,6 +124,10 @@ class TestDexml(unittest.TestCase):
 
         self.assertRaises(dexml.ParseError,pets.parse,"<pets><pet name='riley' species='fish' /></pets>")
         self.assertRaises(dexml.ParseError,pets.parse,"<pets><person name='riley' age='2' /></pets>")
+        
+        def assign(val):
+            p.pet1 = val
+        self.assertRaises(ValueError, assign, person(name = 'ryan', age = 26))
 
         p = pets()
         self.assertRaises(dexml.RenderError,p.render)

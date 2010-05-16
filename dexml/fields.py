@@ -376,6 +376,13 @@ class Model(Field):
             self.__dict__["type"] = value
     type = property(_get_type,_set_type)
 
+    def __set__(self,instance,value):
+        type = self._load_typeclass()
+        if value and not isinstance(value, type):
+            raise ValueError("Invalid value type {0:s}. Model field requires {1:s} instance".\
+                format(value.__class__.__name__, type.__name__))
+        super(Model, self).__set__(instance, value)
+
     @property
     def typeclass(self):
         try:
