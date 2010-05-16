@@ -379,8 +379,8 @@ class Model(Field):
     def __set__(self,instance,value):
         type = self._load_typeclass()
         if value and not isinstance(value, type):
-            raise ValueError("Invalid value type {0:s}. Model field requires {1:s} instance".\
-                format(value.__class__.__name__, type.__name__))
+            raise ValueError("Invalid value type %s. Model field requires %s instance" %
+                (value.__class__.__name__, type.__name__))
         super(Model, self).__set__(instance, value)
 
     @property
