@@ -128,6 +128,9 @@ class TestDexml(unittest.TestCase):
         def assign(val):
             p.pet1 = val
         self.assertRaises(ValueError, assign, person(name = 'ryan', age = 26))
+        self.assertEquals(p.pet1.name,"riley")
+        assign(pet(name="spike"))
+        self.assertEquals(p.pet1.name,"spike")
 
         p = pets()
         self.assertRaises(dexml.RenderError,p.render)
