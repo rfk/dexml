@@ -99,6 +99,23 @@ class TestDexml(unittest.TestCase):
         self.assertEquals(h.strength,7)
 
 
+    def test_string_with_special_chars(self):
+        class letter(dexml.Model):
+            message = fields.String(tagname="msg")
+
+        l = letter.parse("<letter><msg>hello &amp; goodbye</msg></letter>")
+        self.assertEquals(l.message,"hello & goodbye")
+
+        l = letter(message="XML <tags> are fun!")
+        self.assertEquals(l.render(fragment=True),'<letter><msg>XML &lt;tags&gt; are fun!</msg></letter>')
+
+        class update(dexml.Model):
+            status = fields.String(attrname="status")
+
+        u = update(status="feeling <awesome>!")
+        self.assertEquals(u.render(fragment=True),'<update status="feeling &lt;awesome&gt;!" />')
+
+
     def test_model_field(self):
         """Test operation of fields.Model."""
         class person(dexml.Model):

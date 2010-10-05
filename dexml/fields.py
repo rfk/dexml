@@ -227,14 +227,15 @@ class Value(Field):
 
     def render_attributes(self,obj,val,nsmap):
         if val is not None and val is not self.default and self.attrname:
+            qaval = quoteattr(self.render_value(val))
             if isinstance(self.attrname,basestring):
-                yield '%s="%s"' % (self.attrname,self.render_value(val),)
+                yield '%s=%s' % (self.attrname,qaval,)
             else:
                 m_meta = self.model_class.meta
                 (ns,nm) = self.attrname
                 if ns == m_meta.namespace and m_meta.namespace_prefix:
                     prefix = m_meta.namespace_prefix
-                    yield '%s:%s="%s"' % (prefix,nm,self.render_value(val),)
+                    yield '%s:%s=%s' % (prefix,nm,qaval,)
                 else:
                     for (p,n) in nsmap.iteritems():
                         if ns == n[0]:
@@ -245,11 +246,11 @@ class Value(Field):
                         while prefix in nsmap:
                             prefix = "p" + str(random.randint(0,10000))
                         yield 'xmlns:%s="%s"' % (prefix,ns,)
-                    yield '%s:%s="%s"' % (prefix,nm,self.render_value(val),)
+                    yield '%s:%s=%s' % (prefix,nm,qaval,)
 
     def render_children(self,obj,val,nsmap):
         if val is not None and val is not self.default and self.tagname:
-            val = self.render_value(val)
+            val = self._esc_render_value(val)
             def render_tag(prefix,localName,attrs):
                 if val:
                     if prefix:
