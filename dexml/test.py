@@ -105,6 +105,8 @@ class TestDexml(unittest.TestCase):
 
         l = letter.parse("<letter><msg>hello &amp; goodbye</msg></letter>")
         self.assertEquals(l.message,"hello & goodbye")
+        l = letter.parse("<letter><msg><![CDATA[hello & goodbye]]></msg></letter>")
+        self.assertEquals(l.message,"hello & goodbye")
 
         l = letter(message="XML <tags> are fun!")
         self.assertEquals(l.render(fragment=True),'<letter><msg>XML &lt;tags&gt; are fun!</msg></letter>')
@@ -115,6 +117,12 @@ class TestDexml(unittest.TestCase):
         u = update(status="feeling <awesome>!")
         self.assertEquals(u.render(fragment=True),'<update status="feeling &lt;awesome&gt;!" />')
 
+
+    def test_cdata_fields(self):
+        class update(dexml.Model):
+            status = fields.CDATA(tagname=True)
+        u = update(status="feeling <awesome>!")
+        self.assertEquals(u.render(fragment=True),'<update><status><![CDATA[feeling <awesome>!]]></status></update>')
 
     def test_model_field(self):
         """Test operation of fields.Model."""

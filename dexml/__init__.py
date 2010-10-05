@@ -342,7 +342,7 @@ class Model(object):
             if node.nodeType == node.ELEMENT_NODE:
                 err = "unknown element: %s" % (node.nodeName,)
                 raise ParseError(err)
-            elif node.nodeType == node.TEXT_NODE:
+            elif node.nodeType in (node.TEXT_NODE,node.CDATA_SECTION_NODE):
                 if node.nodeValue.strip():
                     err = "unparsed text node: %s" % (node.nodeValue,)
                     raise ParseError(err)

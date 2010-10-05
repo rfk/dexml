@@ -219,7 +219,7 @@ class Value(Field):
         vals = []
         #  Merge all text nodes into a single value
         for child in node.childNodes:
-            if child.nodeType != child.TEXT_NODE:
+            if child.nodeType not in (child.TEXT_NODE,child.CDATA_SECTION_NODE):
                 raise dexml.ParseError("non-text value node")
             vals.append(child.nodeValue)
         self.__set__(obj,self.parse_value("".join(vals)))
@@ -291,11 +291,29 @@ class Value(Field):
     def render_value(self,val):
         return str(val)
 
+    def _esc_render_value(self,val):
+        return escape(self.render_value(val))
+
+
 
 class String(Value):
     """Field representing a simple string value."""
     # actually, the base Value() class will do this automatically.
     pass
+
+
+class CDATA(Value):
+    """String field rendered as CDATA."""
+
+    def __init__(self,**kwds):
+        super(CDATA,self).__init__(**kwds)
+        if self.__dict__.get("tagname",None) is None:
+            raise ValueError("CDATA fields must have a tagname")
+
+    def _esc_render_value(self,val):
+        val = self.render_value(val)
+        val = val.replace("]]>","]]]]><![CDATA[>")
+        return "<![CDATA[" + val + "]]>"
 
 
 class Integer(Value):
