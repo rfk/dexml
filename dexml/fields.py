@@ -457,12 +457,13 @@ class List(Field):
 
     The properties 'minlength' and 'maxlength' control the allowable length
     of the list.
+
     The 'tagname' property sets the 'wrapper' tag which acts as container
     for list items, for example:
 
       class MyModel(Model):
           items = fields.List(fields.String(tagname="item"),
-                              tagname = 'list')
+                              tagname='list')
 
     Corresponding to XML such as:
 
@@ -507,7 +508,7 @@ class List(Field):
         return self.__get__(instance,owner)
 
     def parse_child_node(self,obj,node):
-        #  If out children are inside a grouping tag, parse
+        #  If our children are inside a grouping tag, parse
         #  that first.  The presence of this is indicated by
         #  setting the empty list on the target object.
         if self.tagname:
@@ -575,10 +576,13 @@ class Dict(Field):
 
     The properties 'minlength' and 'maxlength' control the allowable size
     of the dict as in the List class.
+
     If 'unique' property is set to True, parsing will raise exception on
     non-unique key values.
+
     The 'dictclass' property controls the internal dict-like class used by
     the fielt.  By default it is the standard dict class.
+
     The 'tagname' property sets the 'wrapper' tag which acts as container
     for dict items, for example:
 
@@ -651,9 +655,9 @@ class Dict(Field):
         return self.__get__(instance, owner)
 
     def parse_child_node(self, obj, node):
-        #  If out children are inside a grouping tag, parse
+        #  If our children are inside a grouping tag, parse
         #  that first.  The presence of this is indicated by
-        #  setting the empty list on the target object.
+        #  setting an empty dict on the target object.
         if self.tagname:
             val = super(Dict,self).__get__(obj)
             if val is None:
