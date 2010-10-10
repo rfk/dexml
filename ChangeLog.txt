@@ -1,4 +1,11 @@
 
+v0.3.7
+
+  * Automatically escape/unescape special characters in string fields.
+  * Parse CDATA_SECTION nodes as if they were TEXT nodes.
+  * Added CDATA field type, which is just like a String except it renders
+    as a CDATA_SECTION node.
+
 v0.3.6
 
   * strict type checking for Model fields; thanks Alexander Vladimirov.
