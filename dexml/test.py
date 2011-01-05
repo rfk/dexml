@@ -234,7 +234,7 @@ class TestDexml(unittest.TestCase):
             person = fields.Model()
             pets = fields.List("pet",minlength=1)
             notes = fields.List(fields.String(tagname="note"),maxlength=2)
-            rewards = fields.List("reward", tagname = "rewards")
+            rewards = fields.List("reward",tagname="rewards")
 
         p = pets.parse("<pets><person name='ryan' age='26'/><pet name='riley' species='dog' /></pets>")
         self.assertEquals(p.person.name,"ryan")
@@ -264,6 +264,19 @@ class TestDexml(unittest.TestCase):
         p.pets.append(pet(name="guppy",species="fish"))
         p.notes.append("noted")
         self.assertEquals(p.render(fragment=True),'<pets><person name="lozz" age="25" /><pet name="riley" /><pet name="guppy" species="fish" /><note>noted</note></pets>')
+
+        p = pets()
+        p.person = person(name="lozz",age="25")
+        yielded_items = []
+        def gen_pets():
+            for p in (pet(name="riley"),pet(name="guppy",species="fish")):
+                yielded_items.append(p)
+                yield p
+        p.pets = gen_pets()
+        self.assertEquals(len(yielded_items),0)
+        p.notes.append("noted")
+        self.assertEquals(p.render(fragment=True),'<pets><person name="lozz" age="25" /><pet name="riley" /><pet name="guppy" species="fish" /><note>noted</note></pets>')
+        self.assertEquals(len(yielded_items),2)
 
         p = pets.parse("<pets><person name='ryan' age='26'/><pet name='riley' species='dog' /><rewards><reward date='February 23, 2010'/><reward date='November 10, 2009'/></rewards></pets>")
         self.assertEquals(len(p.rewards), 2)

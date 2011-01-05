@@ -485,7 +485,7 @@ class List(Field):
     The properties 'minlength' and 'maxlength' control the allowable length
     of the list.
 
-    The 'tagname' property sets the 'wrapper' tag which acts as container
+    The 'tagname' property sets an optional wrapper tag which acts as container
     for list items, for example:
 
       class MyModel(Model):
@@ -496,7 +496,7 @@ class List(Field):
 
       <MyModel><list><item>one</item><item>two</item></list></MyModel>
 
-    This wrapper tag is rendered if list is not empty and is transparent
+    This wrapper tag is rendered if the list is not empty and is transparent
     for list item access.
 
     """
@@ -568,19 +568,36 @@ class List(Field):
             raise dexml.ParseError("Field '%s': too many items" % (self.field_name,))
 
     def render_children(self,obj,items,nsmap):
-        if self.minlength is not None and len(items) < self.minlength:
-            if self.required:
-                raise dexml.RenderError("Field '%s': not enough items" % (self.field_name,))
-        if self.maxlength is not None and len(items) > self.maxlength:
-            raise dexml.RenderError("too many items")
-        if self.tagname:
-            children = "".join(data for item in items for data in self.field.render_children(obj,item,nsmap))
-            if children:
-                yield children.join(('<%s>'%self.tagname, '</%s>'%self.tagname))
-        else:
+        #  Create a generator that yields child data chunks, and validates
+        #  the number of items in the list as it goes.  It allows any 
+        #  iterable to be passed in, not just a list.
+        def child_chunks():
+            num_items = 0
             for item in items:
+                num_items += 1
+                if self.maxlength is not None and num_items > self.maxlength:
+                    msg = "Field '%s': too many items" % (self.field_name,)
+                    raise dexml.RenderError(msg)
                 for data in self.field.render_children(obj,item,nsmap):
                     yield data
+            if self.minlength is not None and num_items < self.minlength:
+                if self.required:
+                    msg = "Field '%s': not enough items" % (self.field_name,)
+                    raise dexml.RenderError(msg)
+        chunks = child_chunks()
+        #  Render each chunk, but suppress the wrapper tag if there's no data.
+        try:
+            data = chunks.next()
+        except StopIteration:
+            pass
+        else:
+            if self.tagname:
+                yield "<%s>" % (self.tagname,)
+            yield data
+            for data in chunks:
+                yield data
+            if self.tagname:
+                yield "</%s>" % (self.tagname,)
 
 
 class Dict(Field):
