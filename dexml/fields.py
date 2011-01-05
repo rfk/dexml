@@ -214,8 +214,11 @@ class Value(Field):
     def parse_child_node(self,obj,node):
         if not self.tagname:
             return dexml.PARSE_SKIP
-        if not self._check_tagname(node,self.tagname):
-            return dexml.PARSE_SKIP
+        if self.tagname == ".":
+            node = node.parentNode
+        else:
+            if not self._check_tagname(node,self.tagname):
+                return dexml.PARSE_SKIP
         vals = []
         #  Merge all text nodes into a single value
         for child in node.childNodes:
@@ -251,39 +254,44 @@ class Value(Field):
     def render_children(self,obj,val,nsmap):
         if val is not None and val is not self.default and self.tagname:
             val = self._esc_render_value(val)
-            def render_tag(prefix,localName,attrs):
-                if val:
-                    if prefix:
-                        return "<%s:%s%s>%s</%s:%s>" % (prefix,localName,attrs,val,prefix,localName)
-                    else:
-                        return "<%s%s>%s</%s>" % (localName,attrs,val,localName)
-                else:
-                    if prefix:
-                        return "<%s:%s%s />" % (prefix,localName,attrs,)
-                    else:
-                        return "<%s%s />" % (localName,attrs)
-            attrs = ""
-            if isinstance(self.tagname,basestring):
-                prefix = self.model_class.meta.namespace_prefix
-                localName = self.tagname
+            if self.tagname == ".":
+                yield val
             else:
-                m_meta = self.model_class.meta
-                (ns,localName) = self.tagname
-                if not ns:
-                    prefix = None
-                elif ns == m_meta.namespace:
-                    prefix = m_meta.namespace_prefix
+                attrs = ""
+                if isinstance(self.tagname,basestring):
+                    prefix = self.model_class.meta.namespace_prefix
+                    localName = self.tagname
                 else:
-                    for (p,n) in nsmap.iteritems():
-                        if ns == n[0]:
-                            prefix = p
-                            break
+                    m_meta = self.model_class.meta
+                    (ns,localName) = self.tagname
+                    if not ns:
+                        prefix = None
+                    elif ns == m_meta.namespace:
+                        prefix = m_meta.namespace_prefix
                     else:
-                        prefix = "p" + str(random.randint(0,10000))
-                        while prefix in nsmap:
+                        for (p,n) in nsmap.iteritems():
+                            if ns == n[0]:
+                                prefix = p
+                                break
+                        else:
                             prefix = "p" + str(random.randint(0,10000))
-                        attrs = ' xmlns:%s="%s"' % (prefix,ns)
-            yield render_tag(prefix,localName,attrs)
+                            while prefix in nsmap:
+                                prefix = "p" + str(random.randint(0,10000))
+                            attrs = ' xmlns:%s="%s"' % (prefix,ns)
+                yield self._render_tag(val,prefix,localName,attrs)
+
+    def _render_tag(self,val,prefix,localName,attrs):
+        if val:
+            if prefix:
+                args = (prefix,localName,attrs,val,prefix,localName)
+                return "<%s:%s%s>%s</%s:%s>" % args
+            else:
+                return "<%s%s>%s</%s>" % (localName,attrs,val,localName)
+        else:
+            if prefix:
+                return "<%s:%s%s />" % (prefix,localName,attrs,)
+            else:
+                return "<%s%s />" % (localName,attrs)
 
     def parse_value(self,val):
         return val

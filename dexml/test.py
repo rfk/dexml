@@ -494,3 +494,23 @@ class TestDexml(unittest.TestCase):
         b1 = B(b=A(a='value'))
         self.assertEquals(b1.render(),'<?xml version="1.0" ?><y:B xmlns:y="http://yyy"><x:A xmlns:x="http://xxx"><y:a>value</y:a></x:A></y:B>')
 
+    def test_parsing_value_from_tag_contents(self):
+        class attr(dexml.Model):
+            name = fields.String()
+            value = fields.String(tagname=".")
+        class obj(dexml.Model):
+            id = fields.String()
+            attrs = fields.List(attr)
+        o = obj.parse('<obj id="z108"><attr name="level">6</attr><attr name="descr">description</attr></obj>')
+        self.assertEquals(o.id,"z108")
+        self.assertEquals(len(o.attrs),2)
+        self.assertEquals(o.attrs[0].name,"level")
+        self.assertEquals(o.attrs[0].value,"6")
+        self.assertEquals(o.attrs[1].name,"descr")
+        self.assertEquals(o.attrs[1].value,"description")
+
+        o = obj(id="test")
+        o.attrs.append(attr(name="hello",value="world"))
+        o.attrs.append(attr(name="wherethe",value="bloodyhellareya"))
+        self.assertEquals(o.render(fragment=True),'<obj id="test"><attr name="hello">world</attr><attr name="wherethe">bloodyhellareya</attr></obj>')
+
