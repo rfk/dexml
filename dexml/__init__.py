@@ -109,7 +109,7 @@ class Meta:
     """Class holding meta-information about a dexml.Model subclass.
 
     Each dexml.Model subclass has an attribute 'meta' which is an instance
-    of this class.  That instance holds information about how to model 
+    of this class.  That instance holds information about how the model 
     corresponds to XML, such as its tagname, namespace, and error handling
     semantics.  You would not ordinarily create an instance of this class;
     instead let the ModelMetaclass create one automatically.
@@ -351,26 +351,18 @@ class Model(object):
                     err = "unknown attribute: %s" % (node.name,)
                     raise ParseError(err)
 
-    def render(self,encoding=None,fragment=False,nsmap=None):
+    def render(self,encoding=None,fragment=False):
         """Produce XML from this model's instance data.
 
         A unicode string will be returned if any of the objects contain
         unicode values; specifying the 'encoding' argument forces generation
-        of an ASCII string.
+        of a bytestring.
 
         By default a complete XML document is produced, including the
         leading "<?xml>" declaration.  To generate an XML fragment set
         the 'fragment' argument to True.
-
-        The 'nsmap' argument maintains the current stack of namespace
-        prefixes used during rendering; it maps each prefix to a list of
-        namespaces, with the first item in the list being the current
-        namespace for that prefix.  This argument should never be given
-        directly; it is for internal use by the rendering routines.
-         
         """
-        if nsmap is None:
-            nsmap = {}
+        nsmap = {}
         data = []
         if not fragment:
             if encoding:
@@ -384,8 +376,34 @@ class Model(object):
             xml = xml.encode(encoding)
         return xml
 
+    def irender(self,encoding=None,fragment=False):
+        """Generator producing XML from this model's instance data.
+
+        If any of the objects contain unicode values, the resulting output
+        stream will be a fix of bytestrings and unic;de specify the 'encoding'
+        arugment to force generation of bytestrings.
+
+        By default a complete XML document is produced, including the
+        leading "<?xml>" declaration.  To generate an XML fragment set
+        the 'fragment' argument to True.
+        """
+        nsmap = {}
+        if not fragment:
+            if encoding:
+                yield '<?xml version="1.0" encoding="%s" ?>' % (encoding,)
+            else:
+                yield '<?xml version="1.0" ?>'
+        if encoding:
+            for data in self._render(nsmap):
+                if isinstance(data,unicode):
+                    data = data.encode(encoding)
+                yield data
+        else:
+            for data in self._render(nsmap):
+                yield data
+
     def _render(self,nsmap):
-        """Render this model as an XML fragment."""
+        """Generator rendering this model as an XML fragment."""
         #  Determine opening and closing tags
         pushed_ns = False
         if self.meta.namespace:
@@ -414,27 +432,55 @@ class Model(object):
         else:
             open_tag_contents = [self.meta.tagname] 
             close_tag_contents = self.meta.tagname
-        # Find the attributes and child nodes
-        attrs = []
-        children = []
-        num = 0
+        used_fields = set()
+        open_tag_contents.extend(self._render_attributes(used_fields,nsmap))
+        #  Render each child node
+        children = self._render_children(used_fields,nsmap)
+        try:
+            first_child = children.next()
+        except StopIteration:
+            yield "<%s />" % (" ".join(open_tag_contents),)
+        else:
+            yield "<%s>" % (" ".join(open_tag_contents),)
+            yield first_child
+            for child in children:
+                yield child
+            yield "</%s>" % (close_tag_contents,)
+        #  Check that all required fields actually rendered something
         for f in self._fields:
-            val = getattr(self,f.field_name)
-            attrs.extend(f.render_attributes(self,val,nsmap))
-            children.extend(f.render_children(self,val,nsmap))
-            if len(attrs) + len(children) == num and f.required:
+            if f.required and f not in used_fields:
                 raise RenderError("Field '%s' is missing" % (f.field_name,))
-        #  Actually construct the XML
+        #  Clean up
         if pushed_ns:
             nsmap[prefix].pop(0)
-        open_tag_contents.extend(attrs)
-        if children:
-            yield "<%s>" % (" ".join(open_tag_contents),)
-            for chld in children:
-                yield chld
-            yield "</%s>" % (close_tag_contents,)
-        else:
-            yield "<%s />" % (" ".join(open_tag_contents),)
+
+    def _render_attributes(self,used_fields,nsmap):
+        for f in self._fields:
+            val = getattr(self,f.field_name)
+            datas = iter(f.render_attributes(self,val,nsmap))
+            try:
+                data = datas.next()
+            except StopIteration:
+                pass
+            else:
+                used_fields.add(f)
+                yield data
+                for data in datas:
+                    yield data
+
+    def _render_children(self,used_fields,nsmap):
+        for f in self._fields:
+            val = getattr(self,f.field_name)
+            datas = iter(f.render_children(self,val,nsmap))
+            try:
+                data = datas.next()
+            except StopIteration:
+                pass
+            else:
+                used_fields.add(f)
+                yield data
+                for data in datas:
+                    yield data
 
     @staticmethod
     def _make_xml_node(xml):

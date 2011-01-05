@@ -1,4 +1,12 @@
 
+v0.4.0
+
+  * Some API changes to allow generator-based rendering:
+      * Model.irender() is a generator version of Model.render
+      * Model.render no longer takes the "nsmap" argument
+      * Fields.Model no longer calls Model.render, so reimplementing it in a
+        subclass probably won't work; re-implement Model._render instead.
+
 v0.3.7
 
   * Automatically escape/unescape special characters in string fields.

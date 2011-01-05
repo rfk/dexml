@@ -456,7 +456,8 @@ class Model(Field):
 
     def render_children(self,obj,val,nsmap):
         if val is not None:
-            yield val.render(fragment=True,nsmap=nsmap)
+            for data in val._render(nsmap):
+                yield data
 
 
 class List(Field):
@@ -762,7 +763,8 @@ class Choice(Field):
             if self.required:
                 raise dexml.RenderError("Field '%s': required field is missing" % (self.field_name,))
         else:
-            yield item.render(fragment=True,nsmap=nsmap)
+            for data in item._render(nsmap=nsmap):
+                yield data
 
 
 class XmlNode(Field):

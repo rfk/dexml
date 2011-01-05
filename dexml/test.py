@@ -162,8 +162,10 @@ class TestDexml(unittest.TestCase):
         p.person = person(name="lozz",age="25")
         p.pet1 = pet(name="riley")
         self.assertEquals(p.render(fragment=True),'<pets><person name="lozz" age="25" /><pet name="riley" /></pets>')
+        self.assertEquals("".join(p.irender(fragment=True)),'<pets><person name="lozz" age="25" /><pet name="riley" /></pets>')
         p.pet2 = pet(name="guppy",species="fish")
         self.assertEquals(p.render(fragment=True),'<pets><person name="lozz" age="25" /><pet name="riley" /><pet name="guppy" species="fish" /></pets>')
+        self.assertEquals("".join(p.irender(fragment=True)),'<pets><person name="lozz" age="25" /><pet name="riley" /><pet name="guppy" species="fish" /></pets>')
 
 
     def test_model_field_namespace(self):
