@@ -378,7 +378,7 @@ class Model(Field):
 
     This field sublcass allows Models to contain other Models recursively.
     The first argument to the field constructor must be either a Model
-    class or the name of a Model class.
+    class, or the name or tagname of a Model class.
     """
 
     class arguments(Field.arguments):

@@ -132,10 +132,15 @@ class TestDexml(unittest.TestCase):
         class pet(dexml.Model):
             name = fields.String()
             species = fields.String(required=False)
+        class Vet(dexml.Model):
+            class meta:
+                tagname = "vet"
+            name = fields.String()
         class pets(dexml.Model):
             person = fields.Model()
             pet1 = fields.Model("pet")
             pet2 = fields.Model(pet,required=False)
+            vet = fields.Model("Vet",required=False)
 
         p = pets.parse("<pets><person name='ryan' age='26'/><pet name='riley' species='dog' /></pets>")
         self.assertEquals(p.person.name,"ryan")
@@ -146,6 +151,12 @@ class TestDexml(unittest.TestCase):
         self.assertEquals(p.person.name,"ryan")
         self.assertEquals(p.pet1.name,"riley")
         self.assertEquals(p.pet2.species,"fish")
+
+        p = pets.parse("<pets><person name='ryan' age='26'/><pet name='riley' species='dog' /><pet name='fishy' species='fish' /><vet name='Nic' /></pets>")
+        self.assertEquals(p.person.name,"ryan")
+        self.assertEquals(p.pet1.name,"riley")
+        self.assertEquals(p.pet2.species,"fish")
+        self.assertEquals(p.vet.name,"Nic")
 
         self.assertRaises(dexml.ParseError,pets.parse,"<pets><pet name='riley' species='fish' /></pets>")
         self.assertRaises(dexml.ParseError,pets.parse,"<pets><person name='riley' age='2' /></pets>")

@@ -160,7 +160,8 @@ class ModelMetaclass(type):
     sets a Model's default tagname to be equal to the declared class name.
     """
 
-    instances = {}
+    instances_by_tagname = {}
+    instances_by_classname = {}
 
     def __new__(mcls,name,bases,attrs):
         cls = super(ModelMetaclass,mcls).__new__(mcls,name,bases,attrs)
@@ -198,13 +199,20 @@ class ModelMetaclass(type):
         cls._fields = base_fields.values() + cls_fields
         cls._fields.sort(key=lambda f: f._order_counter)
         #  Register the new class so we can find it by name later on
-        mcls.instances[(cls.meta.namespace,cls.meta.tagname)] = cls
+        tagname = (cls.meta.namespace,cls.meta.tagname)
+        mcls.instances_by_tagname[tagname] = cls
+        mcls.instances_by_classname[cls.__name__] = cls
         return cls
 
     @classmethod
     def find_class(mcls,tagname,namespace=None):
         """Find dexml.Model subclass for the given tagname and namespace."""
-        return mcls.instances.get((namespace,tagname))
+        try:
+            return mcls.instances_by_tagname[(namespace,tagname)]
+        except KeyError:
+            if namespace is None:
+                return mcls.instances_by_classname.get(tagname)
+            return None
 
 
 class Model(object):
