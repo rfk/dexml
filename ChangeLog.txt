@@ -6,7 +6,7 @@ v0.4.0
       * Model.render() no longer takes the "nsmap" argument
       * fields.Model no longer calls Model.render(), so reimplementing it in
         a subclass probably won't work; reimplement Model._render() instead.
-      * fields.List accepts a generator, and won't cosume it until rendered.
+      * fields.List accepts a generator, and won't consume it until rendered.
   * fields.Model:  when specifying the model class as a string, search
     first by tagname and then by classname.
   * fields.Value:  allow a tagname of "." to parse a value directly out of

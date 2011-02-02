@@ -21,14 +21,25 @@ class TestDexmlDocstring(unittest.TestCase):
         assert doctest.testmod(dexml)[0] == 0
 
     def test_readme_matches_docstring(self):
-        """Test that the README matches the main docstring."""
-        readme = os.path.join(os.path.dirname(__file__),"../README.txt")
-        if os.path.exists(readme):
-            diff = difflib.unified_diff(open(readme).readlines(),dexml.__doc__.splitlines(True))
-            diff = "".join(diff)
-            if diff:
-                print diff
-                raise AssertionError, "README doesn't match docstring"
+        """Ensure that the README is in sync with the docstring.
+
+        This test should always pass; if the README is out of sync it just
+        updates it with the contents of dexml.__doc__.
+        """
+        dirname = os.path.dirname
+        readme = os.path.join(dirname(dirname(__file__)),"README.rst")
+        if not os.path.isfile(readme):
+            f = open(readme,"wb")
+            f.write(dexml.__doc__.encode())
+            f.close()
+        else:
+            f = open(readme,"rb")
+            if f.read() != dexml.__doc__:
+                f.close()
+                f = open(readme,"wb")
+                f.write(dexml.__doc__.encode())
+                f.close()
+
 
 
 class TestDexml(unittest.TestCase):

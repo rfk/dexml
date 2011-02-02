@@ -1,6 +1,7 @@
 
 
-  dexml:  a dead-simple Object-XML mapper for Python
+dexml:  a dead-simple Object-XML mapper for Python
+==================================================
 
 Let's face it: xml is a fact of modern life.  I'd even go so far as to say
 that it's *good* at what is does.  But that doesn't mean it's easy to work
@@ -11,7 +12,7 @@ instead of writing code to traverse and manipulate yet another DOM.
 The dexml module takes the obvious mapping between XML tags and Python objects
 and lets you capture that as cleanly as possible.  Loosely inspired by Django's
 ORM, you write simple class definitions to define the expected structure of
-your XML document.  Like so:
+your XML document.  Like so::
 
   >>> import dexml
   >>> from dexml import fields
@@ -19,7 +20,7 @@ your XML document.  Like so:
   ...   name = fields.String()
   ...   age = fields.Integer(tagname='age')
 
-Then you can parse an XML document into an object like this:
+Then you can parse an XML document into an object like this::
 
   >>> p = Person.parse("<Person name='Foo McBar'><age>42</age></Person>")
   >>> p.name
@@ -27,20 +28,20 @@ Then you can parse an XML document into an object like this:
   >>> p.age
   42
 
-And you can render an object into an XML document like this:
+And you can render an object into an XML document like this::
 
   >>> p = Person(name="Handsome B. Wonderful",age=36)
   >>> p.render()
   '<?xml version="1.0" ?><Person name="Handsome B. Wonderful"><age>36</age></Person>'
 
-Malformed documents will raise a ParseError:
+Malformed documents will raise a ParseError::
 
   >>> p = Person.parse("<Person><age>92</age></Person>")
   Traceback (most recent call last):
       ...
   ParseError: required field not found: 'name'
 
-Of course, it gets more interesting when you nest Model definitions, like this:
+Of course, it gets more interesting when you nest Model definitions, like this::
 
   >>> class Group(dexml.Model):
   ...   name = fields.String(attrname="name")
