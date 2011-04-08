@@ -541,7 +541,9 @@ class List(Field):
         if self.tagname:
             val = super(List,self).__get__(obj)
             if val is None:
-                if node.tagName == self.tagname:
+                if node.nodeType != node.ELEMENT_NODE:
+                    return dexml.PARSE_SKIP
+                elif node.tagName == self.tagname:
                     self.__set__(obj,[])
                     return dexml.PARSE_CHILDREN
                 else:
@@ -705,7 +707,9 @@ class Dict(Field):
         if self.tagname:
             val = super(Dict,self).__get__(obj)
             if val is None:
-                if node.tagName == self.tagname:
+                if node.nodeType != node.ELEMENT_NODE:
+                    return dexml.PARSE_SKIP
+                elif node.tagName == self.tagname:
                     self.__get__(obj)
                     return dexml.PARSE_CHILDREN
                 else:

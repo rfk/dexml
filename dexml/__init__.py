@@ -528,7 +528,10 @@ class Model(object):
             err = "Class '%s' got a non-element node"
             err = err % (cls.__name__,)
             raise ParseError(err)
-        equals = (lambda a, b: a == b) if cls.meta.case_sensitive else (lambda a, b: a.lower() == b.lower())
+        if cls.meta.case_sensitive:
+            equals = (lambda a,b: a == b)
+        else:
+            equals = (lambda a,b: a.lower() == b.lower())
         if not equals(node.localName, cls.meta.tagname):
             err = "Class '%s' got tag '%s' (expected '%s')"
             err = err % (cls.__name__,node.localName,

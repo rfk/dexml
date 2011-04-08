@@ -52,7 +52,7 @@ class TestDexml(unittest.TestCase):
         h = hello.parse("<hello />")
         self.assertTrue(h)
 
-        h = hello.parse("<hello></hello>")
+        h = hello.parse("<hello>\n</hello>")
         self.assertTrue(h)
         self.assertRaises(dexml.ParseError,hello.parse,"<Hello />")
         self.assertRaises(dexml.ParseError,hello.parse,"<hllo />")
@@ -158,7 +158,7 @@ class TestDexml(unittest.TestCase):
         self.assertEquals(p.pet1.species,"dog")
         self.assertEquals(p.pet2,None)
 
-        p = pets.parse("<pets><person name='ryan' age='26'/><pet name='riley' species='dog' /><pet name='fishy' species='fish' /></pets>")
+        p = pets.parse("<pets>\n<person name='ryan' age='26'/>\n<pet name='riley' species='dog' />\n<pet name='fishy' species='fish' />\n</pets>")
         self.assertEquals(p.person.name,"ryan")
         self.assertEquals(p.pet1.name,"riley")
         self.assertEquals(p.pet2.species,"fish")
@@ -253,7 +253,7 @@ class TestDexml(unittest.TestCase):
         self.assertEquals(len(p.pets),1)
         self.assertEquals(len(p.notes),0)
 
-        p = pets.parse("<pets><person name='ryan' age='26'/><pet name='riley' species='dog' /><pet name='fishy' species='fish' /><note>noted</note></pets>")
+        p = pets.parse("<pets>\n\t<person name='ryan' age='26'/>\n\t<pet name='riley' species='dog' />\n\t<pet name='fishy' species='fish' />\n\t<note>noted</note></pets>")
         self.assertEquals(p.person.name,"ryan")
         self.assertEquals(p.pets[0].name,"riley")
         self.assertEquals(p.pets[1].species,"fish")
