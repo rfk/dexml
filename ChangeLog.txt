@@ -1,4 +1,9 @@
 
+v0.4.1
+
+  * Fix handling of whitespace around List/Dict fields; thanks Alexey Luchko.
+
+
 v0.4.0
 
   * Some API changes to allow generator-based rendering:
