@@ -172,7 +172,7 @@ class ModelMetaclass(type):
             return cls
         #  Set up the cls.meta object, inheriting from base classes
         meta_attrs = {}
-        for base in bases:
+        for base in reversed(bases):
             if isinstance(base,ModelMetaclass) and hasattr(base,"meta"):
                 meta_attrs.update(_meta_attributes(base.meta))
         meta_attrs.pop("tagname",None)

@@ -538,3 +538,35 @@ class TestDexml(unittest.TestCase):
         o.attrs.append(attr(name="wherethe",value="bloodyhellareya"))
         self.assertEquals(o.render(fragment=True),'<obj id="test"><attr name="hello">world</attr><attr name="wherethe">bloodyhellareya</attr></obj>')
 
+    def test_inheritance_of_meta_attributes(self):
+        class Base1(dexml.Model):
+            class meta:
+                tagname = "base1"
+                order_sensitive = True
+        class Base2(dexml.Model):
+            class meta:
+                tagname = "base2"
+                order_sensitive = False
+
+        class Sub(Base1):
+            pass
+        self.assertEquals(Sub.meta.order_sensitive,True)
+
+        class Sub(Base2):
+            pass
+        self.assertEquals(Sub.meta.order_sensitive,False)
+
+        class Sub(Base2):
+            class meta:
+                order_sensitive = True
+        self.assertEquals(Sub.meta.order_sensitive,True)
+
+        class Sub(Base1,Base2):
+            pass
+        self.assertEquals(Sub.meta.order_sensitive,True)
+
+        class Sub(Base2,Base1):
+            pass
+        self.assertEquals(Sub.meta.order_sensitive,False)
+
+

@@ -1,4 +1,9 @@
 
+v0.4.2
+
+  * Inherit meta-attributes from base classes in left-to-right order.
+
+
 v0.4.1
 
   * Fix handling of whitespace around List/Dict fields; thanks Alexey Luchko.
