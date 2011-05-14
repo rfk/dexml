@@ -404,10 +404,10 @@ class Model(Field):
     type = property(_get_type,_set_type)
 
     def __set__(self,instance,value):
-        type = self._load_typeclass()
-        if value and not isinstance(value, type):
+        typeclass = self.typeclass
+        if value and not isinstance(value, typeclass):
             raise ValueError("Invalid value type %s. Model field requires %s instance" %
-                (value.__class__.__name__, type.__name__))
+                (value.__class__.__name__, typeclass.__name__))
         super(Model, self).__set__(instance, value)
 
     @property
@@ -442,6 +442,8 @@ class Model(Field):
                     typeclass = dexml.ModelMetaclass.find_class(typ,ns)
             else:
                 typeclass = ns[typ]
+        if typeclass is None:
+            raise ValueError("Unknown Model class: %s" % (typ,))
         return typeclass
 
     def parse_child_node(self,obj,node):
