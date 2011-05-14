@@ -203,7 +203,7 @@ class Value(Field):
             (ns,attrname) = attrname
         for attr in attrs:
             if attr.localName == attrname:
-                if ns is None or attr.namespaceURI == ns:
+                if attr.namespaceURI == ns:
                     self.__set__(obj,self.parse_value(attr.nodeValue))
                 else:
                     unused.append(attr)
@@ -239,6 +239,8 @@ class Value(Field):
                 if ns == m_meta.namespace and m_meta.namespace_prefix:
                     prefix = m_meta.namespace_prefix
                     yield '%s:%s=%s' % (prefix,nm,qaval,)
+                elif ns is None:
+                    yield '%s=%s' % (nm,qaval,)
                 else:
                     for (p,n) in nsmap.iteritems():
                         if ns == n[0]:
@@ -258,6 +260,8 @@ class Value(Field):
                 yield val
             else:
                 attrs = ""
+                #  By default, tag values inherit the namespace of their
+                #  containing model class.
                 if isinstance(self.tagname,basestring):
                     prefix = self.model_class.meta.namespace_prefix
                     localName = self.tagname
@@ -265,7 +269,12 @@ class Value(Field):
                     m_meta = self.model_class.meta
                     (ns,localName) = self.tagname
                     if not ns:
+                        #  If we have an explicitly un-namespaced tag,
+                        #  we need to be careful.  The model tag might have
+                        #  set the default namespace, which we need to undo.
                         prefix = None
+                        if m_meta.namespace and not m_meta.namespace_prefix:
+                            attrs = ' xmlns=""'
                     elif ns == m_meta.namespace:
                         prefix = m_meta.namespace_prefix
                     else:
@@ -348,9 +357,6 @@ class Boolean(Value):
     a tag indicates False, pass the keyword argument "empty_only".
     """
 
-    class _EMPTYSTRING:
-        pass
-
     class arguments(Value.arguments):
         empty_only = False
 
@@ -359,11 +365,12 @@ class Boolean(Value):
         if self.empty_only:
             self.required = False
 
+    def __set__(self,instance,value):
+        instance.__dict__[self.field_name] = bool(value)
+
     def parse_value(self,val):
         if self.empty_only and val != "":
             raise ValueError("non-empty value in empty_only Boolean")
-        if val == "":
-            return self._EMPTYSTRING
         if val.lower() in ("no","off","false","0"):
             return False
         return True
@@ -373,12 +380,17 @@ class Boolean(Value):
             return []
         return super(Boolean,self).render_children(obj,val,nsmap)
 
+    def render_attributes(self,obj,val,nsmap):
+        if not val and self.empty_only:
+            return []
+        return super(Boolean,self).render_attributes(obj,val,nsmap)
+
     def render_value(self,val):
-        if val is self._EMPTYSTRING:
+        if not val:
+            return "false"
+        if self.empty_only:
             return ""
-        if val and self.empty_only:
-            return ""
-        return str(val)
+        return "true"
 
 
 class Model(Field):
@@ -431,27 +443,19 @@ class Model(Field):
                 typeclass = dexml.ModelMetaclass.find_class(typ,ns)
             if typeclass is None:
                 typeclass = dexml.ModelMetaclass.find_class(typ,None)
+            if typeclass is None:
+                raise ValueError("Unknown Model class: %s" % (typ,))
         else:
             (ns,typ) = typ
             if isinstance(typ,dexml.ModelMetaclass):
                 return typ
-            if isinstance(ns,basestring):
-                typeclass = dexml.ModelMetaclass.find_class(typ,ns)
-                if typeclass is None and ns is None:
-                    ns = self.model_class.meta.namespace
-                    typeclass = dexml.ModelMetaclass.find_class(typ,ns)
-            else:
-                typeclass = ns[typ]
-        if typeclass is None:
-            raise ValueError("Unknown Model class: %s" % (typ,))
+            typeclass = dexml.ModelMetaclass.find_class(typ,ns)
+            if typeclass is None:
+                raise ValueError("Unknown Model class: (%s,%s)" % (ns,typ))
         return typeclass
 
     def parse_child_node(self,obj,node):
         typeclass = self.typeclass
-        if typeclass is None:
-            err = "Unknown typeclass '%s' for field '%s'"
-            err = err % (self.type,self.field_name)
-            raise dexml.ParseError(err)
         try:
             typeclass.validate_xml_node(node)
         except dexml.ParseError:
@@ -515,8 +519,10 @@ class List(Field):
         else:
             kwds["field"] = Model(field,**kwds)
         super(List,self).__init__(**kwds)
-        if not self.minlength:
+        if not self.minlength and not self.tagname:
             self.required = False
+        if self.minlength and not self.required:
+            raise ValueError("Dict must be required if it has minlength")
 
     def _get_field(self):
         field = self.__dict__["field"]
@@ -554,7 +560,7 @@ class List(Field):
         tmpobj = _AttrBucket()
         res = self.field.parse_child_node(tmpobj,node)
         if res is dexml.PARSE_MORE:
-            raise RuntimeError("items in a list cannot return PARSE_MORE")
+            raise ValueError("items in a list cannot return PARSE_MORE")
         if res is dexml.PARSE_DONE:
             items = self.__get__(obj)
             val = getattr(tmpobj,self.field_name)
@@ -672,8 +678,10 @@ class Dict(Field):
         else:
             kwds["field"] = Model(field, **kwds)
         super(Dict, self).__init__(**kwds)
-        if not self.minlength:
+        if not self.minlength and not self.tagname:
             self.required = False
+        if self.minlength and not self.required:
+            raise ValueError("Dict must be required if it has minlength")
         self.key = key
 
     def _get_field(self):
@@ -720,7 +728,7 @@ class Dict(Field):
         tmpobj = _AttrBucket()
         res = self.field.parse_child_node(tmpobj, node)
         if res is dexml.PARSE_MORE:
-            raise RuntimeError("items in a dict cannot return PARSE_MORE")
+            raise ValueError("items in a dict cannot return PARSE_MORE")
         if res is dexml.PARSE_DONE:
             items = self.__get__(obj)
             val = getattr(tmpobj, self.field_name)
@@ -745,7 +753,7 @@ class Dict(Field):
 
     def render_children(self, obj, items, nsmap):
         if self.minlength is not None and len(items) < self.minlength:
-            if self.required:
+            if self.required and len(items) > 0:
                 raise dexml.RenderError("Field '%s': not enough items" % (self.field_name,))
         if self.maxlength is not None and len(items) > self.maxlength:
             raise dexml.RenderError("too many items")
@@ -773,7 +781,7 @@ class Choice(Field):
             elif isinstance(field,basestring):
                 real_fields.append(Model(field))
             else:
-                raise dexml.Error("only Model fields are allowed within a Choice field")
+                raise ValueError("only Model fields are allowed within a Choice field")
         kwds["fields"] = real_fields
         super(Choice,self).__init__(**kwds)
 
@@ -783,7 +791,7 @@ class Choice(Field):
             field.model_class = self.model_class
             res = field.parse_child_node(obj,node)
             if res is dexml.PARSE_MORE:
-                raise RuntimeError("items in a Choice cannot return PARSE_MORE")
+                raise ValueError("items in a Choice cannot return PARSE_MORE")
             if res is dexml.PARSE_DONE:
                 return dexml.PARSE_DONE
         else:

@@ -260,8 +260,10 @@ class Model(object):
         and assigned to that field.
         """
         for f in self._fields:
-            val = kwds.get(f.field_name)
-            setattr(self,f.field_name,val)
+            try:
+                setattr(self,f.field_name,kwds[f.field_name])
+            except KeyError:
+                pass
 
     @classmethod
     def parse(cls,xml):
@@ -369,7 +371,7 @@ class Model(object):
                     err = "unknown attribute: %s" % (node.name,)
                     raise ParseError(err)
 
-    def render(self,encoding=None,fragment=False):
+    def render(self,encoding=None,fragment=False,nsmap=None):
         """Produce XML from this model's instance data.
 
         A unicode string will be returned if any of the objects contain
@@ -380,7 +382,8 @@ class Model(object):
         leading "<?xml>" declaration.  To generate an XML fragment set
         the 'fragment' argument to True.
         """
-        nsmap = {}
+        if nsmap is None:
+            nsmap = {}
         data = []
         if not fragment:
             if encoding:
@@ -394,18 +397,19 @@ class Model(object):
             xml = xml.encode(encoding)
         return xml
 
-    def irender(self,encoding=None,fragment=False):
+    def irender(self,encoding=None,fragment=False,nsmap=None):
         """Generator producing XML from this model's instance data.
 
         If any of the objects contain unicode values, the resulting output
-        stream will be a fix of bytestrings and unic;de specify the 'encoding'
+        stream will be a mix of bytestrings and unicode; specify the 'encoding'
         arugment to force generation of bytestrings.
 
         By default a complete XML document is produced, including the
         leading "<?xml>" declaration.  To generate an XML fragment set
         the 'fragment' argument to True.
         """
-        nsmap = {}
+        if nsmap is None:
+            nsmap = {}
         if not fragment:
             if encoding:
                 yield '<?xml version="1.0" encoding="%s" ?>' % (encoding,)

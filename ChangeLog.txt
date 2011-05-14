@@ -1,6 +1,11 @@
 
 v0.4.2
 
+  * Got 100% test coverage on all target platforms.  Many edge-case
+    bugs squashed in the process.
+  * fields.Boolean:  coerce all values to a proper bool.
+  * Eliminate all instances of "raise RuntimeError".  Use ValueError instead
+    because they were all about incorrect values.
   * Inherit meta-attributes from base classes in left-to-right order.
 
 

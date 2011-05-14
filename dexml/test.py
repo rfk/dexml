@@ -16,6 +16,20 @@ import dexml
 from dexml import fields
 
 
+def model_fields_equal(m1,m2):
+    """Check for equality by comparing model fields."""
+    for nm in m1.__class__._fields:
+        v1 = getattr(m1,nm.field_name)
+        v2 = getattr(m2,nm.field_name)
+        if isinstance(v1,dexml.Model):
+            if not model_fields_equal(v1,v2):
+                return False
+        elif v1 != v2:
+            return False
+    return True
+          
+
+
 class TestDexmlDocstring(unittest.TestCase):
 
     def test_docstring(self):
@@ -188,6 +202,19 @@ class TestDexml(unittest.TestCase):
         self.assertEquals(h.render(fragment=True),'<H:hello xmlns:H="http://hello.com/" />')
 
 
+
+    def test_base_field(self):
+        """Test operation of the base Field class (for coverage purposes)."""
+        class tester(dexml.Model):
+            value = fields.Field()
+        assert isinstance(tester.value,fields.Field)
+        #  This is a parse error because Field doesn't consume any nodes
+        self.assertRaises(dexml.ParseError,tester.parse,"<tester value='42' />")
+        self.assertRaises(dexml.ParseError,tester.parse,"<tester><value>42</value></tester>")
+        #  Likewise, Field doesn't output any XML so it thinks value is missing
+        self.assertRaises(dexml.RenderError,tester(value=None).render)
+
+
     def test_value_fields(self):
         """Test operation of basic value fields."""
         class hello(dexml.Model):
@@ -201,6 +228,37 @@ class TestDexml(unittest.TestCase):
         self.assertEquals(h.sentby,"lozz")
         self.assertEquals(h.message,"hi there")
         self.assertEquals(h.strength,7)
+
+        #  These are parse errors due to namespace mismatches
+        self.assertRaises(dexml.ParseError,hello.parse,"<hello xmlns:N='N:' N:recipient='ryan' sender='lozz' strength='7'><msg>hi there</msg></hello>")
+        self.assertRaises(dexml.ParseError,hello.parse,"<hello xmlns:N='N:' recipient='ryan' sender='lozz' strength='7'><N:msg>hi there</N:msg></hello>")
+
+        #  These are parse errors due to subtags
+        self.assertRaises(dexml.ParseError,hello.parse,"<hello recipient='ryan' sender='lozz' strength='7'><msg>hi <b>there</b></msg></hello>")
+
+
+    def test_float_field(self):
+        class F(dexml.Model):
+            value = fields.Float()
+        self.assertEquals(F.parse("<F value='4.2' />").value,4.2)
+
+
+    def test_boolean_field(self):
+        class F(dexml.Model):
+            value = fields.Boolean()
+        self.assertTrue(F.parse("<F value='' />").value)
+        self.assertTrue(F.parse("<F value='on' />").value)
+        self.assertTrue(F.parse("<F value='YeS' />").value)
+        self.assertFalse(F.parse("<F value='off' />").value)
+        self.assertFalse(F.parse("<F value='no' />").value)
+        self.assertFalse(F.parse("<F value='FaLsE' />").value)
+
+        f = F.parse("<F value='' />")
+        assert model_fields_equal(F.parse(f.render()),f)
+        f.value = "someotherthing"
+        assert model_fields_equal(F.parse(f.render()),f)
+        f.value = False
+        assert model_fields_equal(F.parse(f.render()),f)
 
 
     def test_string_with_special_chars(self):
@@ -223,6 +281,12 @@ class TestDexml(unittest.TestCase):
 
 
     def test_cdata_fields(self):
+        try:
+            class update(dexml.Model):
+                status = fields.CDATA()
+            assert False, "CDATA allowed itself to be created without tagname"
+        except ValueError:
+            pass
         class update(dexml.Model):
             status = fields.CDATA(tagname=True)
         u = update(status="feeling <awesome>!")
@@ -245,7 +309,8 @@ class TestDexml(unittest.TestCase):
             person = fields.Model()
             pet1 = fields.Model("pet")
             pet2 = fields.Model(pet,required=False)
-            vet = fields.Model("Vet",required=False)
+            pet3 = fields.Model((None,pet),required=False)
+            vet = fields.Model((None,"Vet"),required=False)
 
         p = pets.parse("<pets><person name='ryan' age='26'/><pet name='riley' species='dog' /></pets>")
         self.assertEquals(p.person.name,"ryan")
@@ -257,10 +322,11 @@ class TestDexml(unittest.TestCase):
         self.assertEquals(p.pet1.name,"riley")
         self.assertEquals(p.pet2.species,"fish")
 
-        p = pets.parse("<pets><person name='ryan' age='26'/><pet name='riley' species='dog' /><pet name='fishy' species='fish' /><vet name='Nic' /></pets>")
+        p = pets.parse("<pets><person name='ryan' age='26'/><pet name='riley' species='dog' /><pet name='fishy' species='fish' /><pet name='meowth' species='cat' /><vet name='Nic' /></pets>")
         self.assertEquals(p.person.name,"ryan")
         self.assertEquals(p.pet1.name,"riley")
         self.assertEquals(p.pet2.species,"fish")
+        self.assertEquals(p.pet3.species,"cat")
         self.assertEquals(p.vet.name,"Nic")
 
         self.assertRaises(dexml.ParseError,pets.parse,"<pets><pet name='riley' species='fish' /></pets>")
@@ -293,6 +359,7 @@ class TestDexml(unittest.TestCase):
         class person(petbase):
             name = fields.String()
             age = fields.Integer()
+            status = fields.String(tagname=("S:","status"),required=False)
         class pet(petbase):
             name = fields.String()
             species = fields.String(required=False)
@@ -324,6 +391,15 @@ class TestDexml(unittest.TestCase):
         p.pet2 = pet(name="guppy",species="fish")
         self.assertEquals(p.render(fragment=True),'<P:pets xmlns:P="http://www.pets.com/PetML"><P:person name="lozz" age="25" /><P:pet name="riley" /><P:pet name="guppy" species="fish" /></P:pets>')
 
+        p = person.parse('<P:person xmlns:P="http://www.pets.com/PetML" name="ryan" age="26"><status>awesome</status></P:person>')
+        self.assertEquals(p.status,None)
+        p = person.parse('<P:person xmlns:P="http://www.pets.com/PetML" name="ryan" age="26"><P:status>awesome</P:status></P:person>')
+        self.assertEquals(p.status,None)
+        p = person.parse('<P:person xmlns:P="http://www.pets.com/PetML" xmlns:S="S:" name="ryan" age="26"><S:sts>awesome</S:sts></P:person>')
+        self.assertEquals(p.status,None)
+        p = person.parse('<P:person xmlns:P="http://www.pets.com/PetML" xmlns:S="S:" name="ryan" age="26"><S:status>awesome</S:status></P:person>')
+        self.assertEquals(p.status,"awesome")
+
 
     def test_list_field(self):
         """Test operation of fields.List"""
@@ -339,7 +415,7 @@ class TestDexml(unittest.TestCase):
             person = fields.Model()
             pets = fields.List("pet",minlength=1)
             notes = fields.List(fields.String(tagname="note"),maxlength=2)
-            rewards = fields.List("reward",tagname="rewards")
+            rewards = fields.List("reward",tagname="rewards",required=False)
 
         p = pets.parse("<pets><person name='ryan' age='26'/><pet name='riley' species='dog' /></pets>")
         self.assertEquals(p.person.name,"ryan")
@@ -392,6 +468,41 @@ class TestDexml(unittest.TestCase):
         self.assertRaises(dexml.ParseError, pets.parse, "<pets><person name='ryan' age='26' /><pet name='riley' species='dog' /><reward date='February 23, 2010'/><reward date='November 10, 2009' /></pets>")
 
 
+    def test_list_field_sanity_checks(self):
+        class GreedyField(fields.Field):
+            def parse_child_node(self,obj,node):
+                return dexml.PARSE_MORE
+        class SaneList(dexml.Model):
+            item = fields.List(GreedyField(tagname="item"))
+        self.assertRaises(ValueError,SaneList.parse,"<SaneList><item /><item /></SaneList>")
+
+
+    def test_list_field_max_min(self):
+        try:
+            class MyStuff(dexml.Model):
+                items = fields.List(fields.String(tagname="item"),required=False,minlength=2)
+            assert False, "List allowed creation with nonsensical args"
+        except ValueError:
+            pass
+
+        class MyStuff(dexml.Model):
+            items = fields.List(fields.String(tagname="item"),required=False)
+        self.assertEquals(MyStuff.parse("<MyStuff />").items,[])
+
+        MyStuff.items.maxlength = 1
+        self.assertEquals(MyStuff.parse("<MyStuff><item /></MyStuff>").items,[""])
+        self.assertRaises(dexml.ParseError,MyStuff.parse,"<MyStuff><item /><item /></MyStuff>")
+        s = MyStuff()
+        s.items = ["one","two"]
+        self.assertRaises(dexml.RenderError,s.render)
+
+        MyStuff.items.maxlength = None
+        MyStuff.items.minlength = 2
+        MyStuff.items.required = True
+        self.assertEquals(MyStuff.parse("<MyStuff><item /><item /></MyStuff>").items,["",""])
+        self.assertRaises(dexml.ParseError,MyStuff.parse,"<MyStuff><item /></MyStuff>")
+
+
     def test_dict_field(self):
         """Test operation of fields.Dict"""
         class item(dexml.Model):
@@ -415,13 +526,13 @@ class TestDexml(unittest.TestCase):
         self.assertRaises(ValueError, _setitem)
 
         class obj(dexml.Model):
-            items = fields.Dict('item', key = 'name', unique = True)
+            items = fields.Dict(fields.Model(item), key = 'name', unique = True)
         xml = '<obj><item name="item1"><attr>val1</attr></item><item name="item1"><attr>val2</attr></item></obj>'
         self.assertRaises(dexml.ParseError, obj.parse, xml)
 
         class obj(dexml.Model):
             items = fields.Dict('item', key = 'name', tagname = 'items')
-        xml = '<obj><items><item name="item1"><attr>val1</attr></item><item name="item2"><attr>val2</attr></item></items></obj>'
+        xml = '<obj> <ignoreme /> <items> <item name="item1"><attr>val1</attr></item> <item name="item2"><attr>val2</attr></item> </items> </obj>'
 
         o = obj.parse(xml)
         self.assertEquals(len(o.items), 2)
@@ -439,6 +550,55 @@ class TestDexml(unittest.TestCase):
             items = fields.Dict('item', key = 'name', dictclass = _dict)
         o = obj()
         self.assertEquals(o.items['item1'].name, 'item1')
+
+
+    def test_dict_field_sanity_checks(self):
+        class GreedyField(fields.Field):
+            def parse_child_node(self,obj,node):
+                return dexml.PARSE_MORE
+        class SaneDict(dexml.Model):
+            item = fields.Dict(GreedyField(tagname="item"),key="name")
+        self.assertRaises(ValueError,SaneDict.parse,"<SaneDict><item /></SaneDict>")
+
+        class item(dexml.Model):
+            name = fields.String()
+            value = fields.String()
+        class MyStuff(dexml.Model):
+            items = fields.Dict(item,key="wrongname")
+        self.assertRaises(dexml.ParseError,MyStuff.parse,"<MyStuff><ignoreme /><item name='hi' value='world' /></MyStuff>")
+
+
+    def test_dict_field_max_min(self):
+        class item(dexml.Model):
+            name = fields.String()
+            value = fields.String()
+        try:
+            class MyStuff(dexml.Model):
+                items = fields.Dict(item,key="name",required=False,minlength=2)
+            assert False, "Dict allowed creation with nonsensical args"
+        except ValueError:
+            pass
+
+        class MyStuff(dexml.Model):
+            items = fields.Dict(item,key="name",required=False)
+        self.assertEquals(MyStuff.parse("<MyStuff />").items,{})
+
+        MyStuff.items.maxlength = 1
+        self.assertEquals(len(MyStuff.parse("<MyStuff><item name='hi' value='world' /></MyStuff>").items),1)
+        self.assertRaises(dexml.ParseError,MyStuff.parse,"<MyStuff><item name='hi' value='world' /><item name='hello' value='earth' /></MyStuff>")
+        s = MyStuff()
+        s.items = [item(name="yo",value="dawg"),item(name="wazzup",value="yo")]
+        self.assertRaises(dexml.RenderError,s.render)
+
+        MyStuff.items.maxlength = None
+        MyStuff.items.minlength = 2
+        MyStuff.items.required = True
+        self.assertEquals(len(MyStuff.parse("<MyStuff><item name='hi' value='world' /><item name='hello' value='earth' /></MyStuff>").items),2)
+        self.assertRaises(dexml.ParseError,MyStuff.parse,"<MyStuff><item name='hi' value='world' /></MyStuff>")
+
+        s = MyStuff()
+        s.items = [item(name="yo",value="dawg")]
+        self.assertRaises(dexml.RenderError,s.render)
 
 
     def test_choice_field(self):
@@ -460,8 +620,25 @@ class TestDexml(unittest.TestCase):
         self.assertRaises(dexml.ParseError,b.parse,"<breakfast />")
 
         b = breakfast()
+        self.assertRaises(dexml.RenderError,b.render)
         b.meal = bacon(num_rashers=1)
         self.assertEquals(b.render(fragment=True),"<breakfast><bacon num_rashers=\"1\" /></breakfast>")
+
+
+    def test_choice_field_sanity_checks(self):
+        try:
+            class SaneChoice(dexml.Model):
+                item = fields.Choice(fields.String(),fields.Integer())
+            assert False, "Choice field failed its sanity checks"
+        except ValueError:
+            pass
+        class GreedyModel(fields.Model):
+            def parse_child_node(self,obj,node):
+                return dexml.PARSE_MORE
+        class SaneChoice(dexml.Model):
+            item = fields.Choice(GreedyModel("SaneChoice"))
+            
+        self.assertRaises(ValueError,SaneChoice.parse,"<SaneChoice><SaneChoice /></SaneChoice>")
 
 
     def test_list_of_choice(self):
@@ -510,7 +687,7 @@ class TestDexml(unittest.TestCase):
         class bucket(dexml.Model):
             class meta:
                 namespace = "bucket-uri"
-            contents = fields.XmlNode()
+            contents = fields.XmlNode(encoding="utf8")
         b = bucket.parse("<B:bucket xmlns:B='bucket-uri'><B:contents><hello><B:world /></hello></B:contents></B:bucket>")
         self.assertEquals(b.contents.childNodes[0].tagName,"hello")
         self.assertEquals(b.contents.childNodes[0].namespaceURI,None)
@@ -518,9 +695,23 @@ class TestDexml(unittest.TestCase):
         self.assertEquals(b.contents.childNodes[0].childNodes[0].namespaceURI,"bucket-uri")
 
         b = bucket()
+        b.contents = "<hello>world</hello>"
+        b = bucket.parse(b.render())
+        self.assertEquals(b.contents.tagName,"hello")
+        b.contents = u"<hello>world</hello>"
+        b = bucket.parse(b.render())
+        self.assertEquals(b.contents.tagName,"hello")
+
         b = bucket.parse("<bucket xmlns='bucket-uri'><bucket><hello /></bucket></bucket>")
         b2 = bucket.parse("".join(fields.XmlNode.render_children(b,b.contents,{})))
         self.assertEquals(b2.contents.tagName,"hello")
+
+        class bucket(dexml.Model):
+            class meta:
+                namespace = "bucket-uri"
+            contents = fields.XmlNode(tagname="contents")
+        b = bucket.parse("<B:bucket xmlns:B='bucket-uri'><ignoreme /><B:contents><hello><B:world /></hello></B:contents></B:bucket>")
+        self.assertEquals(b.contents.childNodes[0].tagName,"hello")
 
 
     def test_namespaced_attrs(self):
@@ -609,15 +800,78 @@ class TestDexml(unittest.TestCase):
         class A(dexml.Model):
             class meta:
                 namespace='http://xxx'
-                namespace_prefix='x'
             a = fields.String(tagname=('http://yyy','a'))
         class B(dexml.Model):
             class meta:
                 namespace='http://yyy'
-                namespace_prefix='y'
             b = fields.Model(A)
+
         b1 = B(b=A(a='value'))
+
+        #  With no specific prefixes set we can't predict the output,
+        #  but it should round-trip OK.
+        assert model_fields_equal(B.parse(b1.render()),b1)
+
+        #  With specific prefixes set, output is predictable.
+        A.meta.namespace_prefix = "x"
+        B.meta.namespace_prefix = "y"
         self.assertEquals(b1.render(),'<?xml version="1.0" ?><y:B xmlns:y="http://yyy"><x:A xmlns:x="http://xxx"><y:a>value</y:a></x:A></y:B>')
+        A.meta.namespace_prefix = None
+        B.meta.namespace_prefix = None
+
+        #  This is a little hackery to trick the random-prefix generator
+        #  into looping a few times before picking one.  We can't predict
+        #  the output but it'll exercise the code.
+        class pickydict(dict):
+            def __init__(self,*args,**kwds):
+                self.__counter = 0
+                super(pickydict,self).__init__(*args,**kwds)
+            def __contains__(self,key):
+                if self.__counter > 5:
+                    return super(pickydict,self).__contains__(key)
+                self.__counter += 1
+                return True
+        assert model_fields_equal(B.parse(b1.render(nsmap=pickydict())),b1)
+
+        class A(dexml.Model):
+            class meta:
+                namespace='T:'
+            a = fields.String(attrname=('A:','a'))
+            b = fields.String(attrname=(None,'b'))
+            c = fields.String(tagname=(None,'c'))
+
+        a1 = A(a="hello",b="world",c="owyagarn")
+
+        #  With no specific prefixes set we can't predict the output,
+        #  but it should round-trip OK.
+        assert model_fields_equal(A.parse(a1.render()),a1)
+
+        #  With specific prefixes set, output is predictable.
+        #  Note that this suppresses generation of the xmlns declarations,
+        #  so the output is actually broken here.  Broken, but predictable.
+        nsmap = {}
+        nsmap["T"] = ["T:"]
+        nsmap["A"] = ["A:"]
+        self.assertEquals(a1.render(fragment=True,nsmap=nsmap),'<A xmlns="T:" A:a="hello" b="world"><c xmlns="">owyagarn</c></A>')
+
+        #  This is a little hackery to trick the random-prefix generator
+        #  into looping a few times before picking one.  We can't predict
+        #  the output but it'll exercise the code.
+        class pickydict(dict):
+            def __init__(self,*args,**kwds):
+                self.__counter = 0
+                super(pickydict,self).__init__(*args,**kwds)
+            def __contains__(self,key):
+                if self.__counter > 5:
+                    return super(pickydict,self).__contains__(key)
+                self.__counter += 1
+                return True
+        assert model_fields_equal(A.parse(a1.render(nsmap=pickydict())),a1)
+
+        A.c.tagname = ("C:","c")
+        assert model_fields_equal(A.parse(a1.render(nsmap=pickydict())),a1)
+        a1 = A(a="hello",b="world",c="")
+        assert model_fields_equal(A.parse(a1.render(nsmap=pickydict())),a1)
 
 
     def test_parsing_value_from_tag_contents(self):
@@ -701,6 +955,16 @@ class TestDexml(unittest.TestCase):
     def test_error_using_undefined_model_class(self):
         class Whoopsie(dexml.Model):
             value = fields.Model("UndefinedModel")
+        self.assertRaises(ValueError,Whoopsie.parse,"<Whoopsie><UndefinedModel /></Whoopsie>")
+        self.assertRaises(ValueError,Whoopsie,value=None)
+
+        class Whoopsie(dexml.Model):
+            value = fields.Model((None,"UndefinedModel"))
+        self.assertRaises(ValueError,Whoopsie.parse,"<Whoopsie><UndefinedModel /></Whoopsie>")
+        self.assertRaises(ValueError,Whoopsie,value=None)
+
+        class Whoopsie(dexml.Model):
+            value = fields.Model(("W:","UndefinedModel"))
         self.assertRaises(ValueError,Whoopsie.parse,"<Whoopsie><UndefinedModel /></Whoopsie>")
         self.assertRaises(ValueError,Whoopsie,value=None)
 
