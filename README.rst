@@ -6,8 +6,8 @@ dexml:  a dead-simple Object-XML mapper for Python
 Let's face it: xml is a fact of modern life.  I'd even go so far as to say
 that it's *good* at what is does.  But that doesn't mean it's easy to work
 with and it doesn't mean that we have to like it.  Most of the time, XML
-just needs to get the hell out of the way and let you do some actual work
-instead of writing code to traverse and manipulate yet another DOM.
+just needs to get out of the way and let you do some actual work instead
+of writing code to traverse and manipulate yet another DOM.
 
 The dexml module takes the obvious mapping between XML tags and Python objects
 and lets you capture that as cleanly as possible.  Loosely inspired by Django's

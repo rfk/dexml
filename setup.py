@@ -50,9 +50,18 @@ KEYWORDS = "xml"
 CLASSIFIERS = [
     "Programming Language :: Python",
     "Programming Language :: Python :: 2",
+    "Programming Language :: Python :: 2.5",
+    "Programming Language :: Python :: 2.6",
+    "Programming Language :: Python :: 2.7",
     "Programming Language :: Python :: 3",
-    "Development Status :: 4 - Beta",
-    "License :: OSI Approved :: MIT License"
+    "Programming Language :: Python :: 3.2",
+    "License :: OSI Approved",
+    "License :: OSI Approved :: MIT License",
+    "Development Status :: 5 - Production/Stable",
+    "Intended Audience :: Developers",
+    "Topic :: Text Processing",
+    "Topic :: Text Processing :: Markup",
+    "Topic :: Text Processing :: Markup :: XML",
 ]
 
 setup(name=NAME,

@@ -1,12 +1,12 @@
 
 v0.4.2
 
-  * Got 100% test coverage on all target platforms.  Many edge-case
+  * Got 100% test coverage on all target python versions.  Many edge-case
     bugs squashed in the process.
-  * fields.Boolean:  coerce all values to a proper bool.
-  * Eliminate all instances of "raise RuntimeError".  Use ValueError instead
-    because they were all about incorrect values.
+  * Eliminate all use of "raise RuntimeError"; use ValueError instead
+    because they were all about incorrect values encountered at runtime.
   * Inherit meta-attributes from base classes in left-to-right order.
+  * fields.Boolean:  coerce all values to a proper bool.
 
 
 v0.4.1
