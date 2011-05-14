@@ -1,0 +1,8 @@
+*.pyc
+*.pyo
+*~
+*.swp
+build/
+dist/
+.coverage
+cover
