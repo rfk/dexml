@@ -9,6 +9,8 @@ import os.path
 import difflib
 import unittest
 import doctest
+from xml.dom import minidom
+from StringIO import StringIO
 
 import dexml
 from dexml import fields
@@ -44,6 +46,7 @@ class TestDexmlDocstring(unittest.TestCase):
 
 class TestDexml(unittest.TestCase):
 
+
     def test_base(self):
         """Test operation of a dexml.Model class with no fields."""
         class hello(dexml.Model):
@@ -54,11 +57,17 @@ class TestDexml(unittest.TestCase):
 
         h = hello.parse("<hello>\n</hello>")
         self.assertTrue(h)
-        self.assertRaises(dexml.ParseError,hello.parse,"<Hello />")
-        self.assertRaises(dexml.ParseError,hello.parse,"<hllo />")
 
         h = hello.parse("<hello>world</hello>")
         self.assertTrue(h)
+
+        d = minidom.parseString("<hello>world</hello>")
+        h = hello.parse(d)
+        self.assertTrue(h)
+
+        self.assertRaises(dexml.ParseError,hello.parse,"<Hello />")
+        self.assertRaises(dexml.ParseError,hello.parse,"<hllo />")
+        self.assertRaises(dexml.ParseError,hello.parse,"<hello xmlns='T:' />")
 
         hello.meta.ignore_unknown_elements = False
         self.assertRaises(dexml.ParseError,hello.parse,"<hello>world</hello>")
@@ -66,9 +75,86 @@ class TestDexml(unittest.TestCase):
 
         h = hello()
         self.assertEquals(h.render(),'<?xml version="1.0" ?><hello />')
+        self.assertEquals(h.render(fragment=True),"<hello />")
+        self.assertEquals(h.render(encoding="utf8"),'<?xml version="1.0" encoding="utf8" ?><hello />')
+        self.assertEquals(h.render(encoding="utf8",fragment=True),"<hello />")
+
+        self.assertEquals(h.render(),"".join(h.irender()))
+        self.assertEquals(h.render(fragment=True),"".join(h.irender(fragment=True)))
+        self.assertEquals(h.render(encoding="utf8"),"".join(h.irender(encoding="utf8")))
+        self.assertEquals(h.render(encoding="utf8",fragment=True),"".join(h.irender(encoding="utf8",fragment=True)))
+
+
+    def test_errors_on_malformed_xml(self):
+        class hello(dexml.Model):
+            pass
+
+        self.assertRaises(dexml.XmlError,hello.parse,"<hello>")
+        self.assertRaises(dexml.XmlError,hello.parse,"<hello></helo>")
+        self.assertRaises(dexml.XmlError,hello.parse,"")
+
+        self.assertRaises(dexml.XmlError,hello.parse,u"")
+        self.assertRaises(dexml.XmlError,hello.parse,u"<hello>")
+        self.assertRaises(dexml.XmlError,hello.parse,u"<hello></helo>")
+
+        self.assertRaises(dexml.XmlError,hello.parse,StringIO("<hello>"))
+        self.assertRaises(dexml.XmlError,hello.parse,StringIO("<hello></helo>"))
+        self.assertRaises(dexml.XmlError,hello.parse,StringIO(""))
+
+        self.assertRaises(ValueError,hello.parse,None)
+        self.assertRaises(ValueError,hello.parse,42)
+        self.assertRaises(ValueError,hello.parse,staticmethod)
+
+
+    def test_unicode_model_tagname(self):
+        """Test a dexml.Model class with a unicode tag name."""
+        class hello(dexml.Model):
+            class meta:
+                tagname = u"hel\N{GREEK SMALL LETTER LAMDA}o"
+
+        h = hello.parse(u"<hel\N{GREEK SMALL LETTER LAMDA}o />")
+        self.assertTrue(h)
+
+        h = hello.parse(u"<hel\N{GREEK SMALL LETTER LAMDA}o>\n</hel\N{GREEK SMALL LETTER LAMDA}o>")
+        self.assertTrue(h)
+        self.assertRaises(dexml.ParseError,hello.parse,u"<hello />")
+        self.assertRaises(dexml.ParseError,hello.parse,u"<Hello />")
+        self.assertRaises(dexml.ParseError,hello.parse,u"<hllo />")
+        self.assertRaises(dexml.ParseError,hello.parse,u"<Hel\N{GREEK SMALL LETTER LAMDA}o />")
+
+        h = hello.parse(u"<hel\N{GREEK SMALL LETTER LAMDA}o>world</hel\N{GREEK SMALL LETTER LAMDA}o>")
+        self.assertTrue(h)
+
+        h = hello.parse(u"<?xml version='1.0' encoding='utf-8' ?><hel\N{GREEK SMALL LETTER LAMDA}o>world</hel\N{GREEK SMALL LETTER LAMDA}o>")
+        h = hello.parse(u"<?xml version='1.0' encoding='utf-16' ?><hel\N{GREEK SMALL LETTER LAMDA}o>world</hel\N{GREEK SMALL LETTER LAMDA}o>")
+        self.assertTrue(h)
 
         h = hello()
-        self.assertEquals(h.render(fragment=True),"<hello />")
+        self.assertEquals(h.render(),u'<?xml version="1.0" ?><hel\N{GREEK SMALL LETTER LAMDA}o />')
+        self.assertEquals(h.render(fragment=True),u"<hel\N{GREEK SMALL LETTER LAMDA}o />")
+        self.assertEquals(h.render(encoding="utf8"),'<?xml version="1.0" encoding="utf8" ?><hel\xce\xbbo />')
+        self.assertEquals(h.render(encoding="utf8",fragment=True),"<hel\xce\xbbo />")
+
+        self.assertEquals(h.render(),"".join(h.irender()))
+        self.assertEquals(h.render(fragment=True),"".join(h.irender(fragment=True)))
+        self.assertEquals(h.render(encoding="utf8"),"".join(h.irender(encoding="utf8")))
+        self.assertEquals(h.render(encoding="utf8",fragment=True),"".join(h.irender(encoding="utf8",fragment=True)))
+
+
+    def test_model_meta_attributes(self):
+        class hello(dexml.Model):
+            pass
+
+        self.assertRaises(dexml.ParseError,hello.parse,"<Hello />")
+        hello.meta.case_sensitive = False
+        self.assertTrue(hello.parse("<Hello />"))
+        self.assertRaises(dexml.ParseError,hello.parse,"<Helpo />")
+        hello.meta.case_sensitive = True
+
+        self.assertTrue(hello.parse("<hello>world</hello>"))
+        hello.meta.ignore_unknown_elements = False
+        self.assertRaises(dexml.ParseError,hello.parse,"<hello>world</hello>")
+        hello.meta.ignore_unknown_elements = True
 
 
     def test_namespace(self):
@@ -87,6 +173,13 @@ class TestDexml(unittest.TestCase):
         self.assertRaises(dexml.ParseError,hello.parse,"<hello />")
         self.assertRaises(dexml.ParseError,hello.parse,"<H:hllo xmlns:H='http://hello.com/' />")
         self.assertRaises(dexml.ParseError,hello.parse,"<H:hello xmlns:H='http://hello.com/'>world</H:hello>")
+
+        hello.meta.case_sensitive = False
+        self.assertRaises(dexml.ParseError,hello.parse,"<Hello />")
+        self.assertRaises(dexml.ParseError,hello.parse,"<H:hllo xmlns:H='http://hello.com/' />")
+        self.assertRaises(dexml.ParseError,hello.parse,"<H:hello xmlns:H='http://Hello.com/' />")
+        hello.parse("<H:HeLLo xmlns:H='http://hello.com/' />")
+        hello.meta.case_sensitive = True
 
         h = hello()
         self.assertEquals(h.render(fragment=True),'<hello xmlns="http://hello.com/" />')
@@ -134,6 +227,7 @@ class TestDexml(unittest.TestCase):
             status = fields.CDATA(tagname=True)
         u = update(status="feeling <awesome>!")
         self.assertEquals(u.render(fragment=True),'<update><status><![CDATA[feeling <awesome>!]]></status></update>')
+
 
     def test_model_field(self):
         """Test operation of fields.Model."""
@@ -297,6 +391,7 @@ class TestDexml(unittest.TestCase):
         pets.meta.ignore_unknown_elements = False
         self.assertRaises(dexml.ParseError, pets.parse, "<pets><person name='ryan' age='26' /><pet name='riley' species='dog' /><reward date='February 23, 2010'/><reward date='November 10, 2009' /></pets>")
 
+
     def test_dict_field(self):
         """Test operation of fields.Dict"""
         class item(dexml.Model):
@@ -345,6 +440,7 @@ class TestDexml(unittest.TestCase):
         o = obj()
         self.assertEquals(o.items['item1'].name, 'item1')
 
+
     def test_choice_field(self):
         """Test operation of fields.Choice"""
         class breakfast(dexml.Model):
@@ -386,6 +482,7 @@ class TestDexml(unittest.TestCase):
         self.assertEquals(b.meals[0].num_rashers,2)
         self.assertTrue(b.meals[1].with_milk)
 
+
     def test_empty_only_boolean(self):
         """Test operation of fields.Boolean with empty_only=True"""
         class toggles(dexml.Model):
@@ -425,6 +522,7 @@ class TestDexml(unittest.TestCase):
         b2 = bucket.parse("".join(fields.XmlNode.render_children(b,b.contents,{})))
         self.assertEquals(b2.contents.tagName,"hello")
 
+
     def test_namespaced_attrs(self):
         class nsa(dexml.Model):
             f1 = fields.Integer(attrname=("test:","f1"))
@@ -442,6 +540,7 @@ class TestDexml(unittest.TestCase):
         n = nsa_decl.parse("<t:nsa t:f1='7' xmlns:t='test:' />")
         self.assertEquals(n.f1,7)
         self.assertEquals(n.render(fragment=True),'<t:nsa xmlns:t="test:" t:f1="7" />')
+
 
     def test_namespaced_children(self):
         class nsc(dexml.Model):
@@ -474,6 +573,7 @@ class TestDexml(unittest.TestCase):
 
         self.assertEquals(n2.render(fragment=True),'<t:nsc xmlns:t="test:"><t:f1>7</t:f1></t:nsc>')
 
+
     def test_order_sensitive(self):
         """Test operation of order-sensitive and order-insensitive parsing"""
         class junk(dexml.Model):
@@ -504,6 +604,7 @@ class TestDexml(unittest.TestCase):
         self.assertEquals(j.notes,["note1","note2"])
         self.assertEquals(j.amount,7)
 
+
     def test_namespace_prefix_generation(self):
         class A(dexml.Model):
             class meta:
@@ -517,6 +618,7 @@ class TestDexml(unittest.TestCase):
             b = fields.Model(A)
         b1 = B(b=A(a='value'))
         self.assertEquals(b1.render(),'<?xml version="1.0" ?><y:B xmlns:y="http://yyy"><x:A xmlns:x="http://xxx"><y:a>value</y:a></x:A></y:B>')
+
 
     def test_parsing_value_from_tag_contents(self):
         class attr(dexml.Model):
@@ -537,6 +639,7 @@ class TestDexml(unittest.TestCase):
         o.attrs.append(attr(name="hello",value="world"))
         o.attrs.append(attr(name="wherethe",value="bloodyhellareya"))
         self.assertEquals(o.render(fragment=True),'<obj id="test"><attr name="hello">world</attr><attr name="wherethe">bloodyhellareya</attr></obj>')
+
 
     def test_inheritance_of_meta_attributes(self):
         class Base1(dexml.Model):
@@ -569,4 +672,51 @@ class TestDexml(unittest.TestCase):
             pass
         self.assertEquals(Sub.meta.order_sensitive,False)
 
+
+    def test_mixing_in_other_base_classes(self):
+        class Thing(dexml.Model):
+            testit = fields.String()
+        class Mixin(object):
+            def _get_testit(self):
+                return 42
+            def _set_testit(self,value):
+                pass
+            testit = property(_get_testit,_set_testit)
+
+        class Sub(Thing,Mixin):
+            pass
+        assert issubclass(Sub,Thing)
+        assert issubclass(Sub,Mixin)
+        s = Sub.parse('<Sub testit="hello" />')
+        self.assertEquals(s.testit,"hello")
+
+        class Sub(Mixin,Thing):
+            pass
+        assert issubclass(Sub,Thing)
+        assert issubclass(Sub,Mixin)
+        s = Sub.parse('<Sub testit="hello" />')
+        self.assertEquals(s.testit,42)
+
+
+    def test_error_using_undefined_model_class(self):
+        class Whoopsie(dexml.Model):
+            value = fields.Model("UndefinedModel")
+        self.assertRaises(ValueError,Whoopsie.parse,"<Whoopsie><UndefinedModel /></Whoopsie>")
+        self.assertRaises(ValueError,Whoopsie,value=None)
+
+
+    def test_unordered_parse_of_list_field(self):
+        class Notebook(dexml.Model):
+            class meta:
+                order_sensitive = False
+            notes = fields.List(fields.String(tagname="note"),tagname="notes")
+
+        n = Notebook.parse("<Notebook><notes><note>one</note><note>two</note></notes></Notebook>")
+        self.assertEquals(n.notes,["one","two"])
+
+        Notebook.parse("<Notebook><wtf /><notes><note>one</note><note>two</note><wtf /></notes></Notebook>")
+
+        Notebook.meta.ignore_unknown_elements = False
+        self.assertRaises(dexml.ParseError,Notebook.parse,"<Notebook><wtf /><notes><note>one</note><note>two</note><wtf /></notes></Notebook>")
+        self.assertRaises(dexml.ParseError,Notebook.parse,"<Notebook tag='home'><notes><note>one</note><note>two</note></notes></Notebook>")
 

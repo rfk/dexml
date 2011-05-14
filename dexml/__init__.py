@@ -70,6 +70,7 @@ __ver_sub__ = ""
 __version__ = "%d.%d.%d%s" % (__ver_major__,__ver_minor__,__ver_patch__,__ver_sub__)
                               
 
+import re
 import copy
 from xml.dom import minidom
 
@@ -212,8 +213,16 @@ class ModelMetaclass(type):
             return mcls.instances_by_tagname[(namespace,tagname)]
         except KeyError:
             if namespace is None:
-                return mcls.instances_by_classname.get(tagname)
-            return None
+                try:
+                    return mcls.instances_by_classname[tagname]
+                except KeyError:
+                    pass
+        return None
+
+
+#  You can use this re to extract the encoding declaration from the XML
+#  document string.  Hopefully you won't have to, but you might need to...
+_XML_ENCODING_RE = re.compile("<\\?xml [^>]*encoding=[\"']([a-zA-Z0-9\\.\\-\\_]+)[\"'][^>]*?>")
 
 
 class Model(object):
@@ -497,9 +506,21 @@ class Model(object):
         try:
             ntype = xml.nodeType
         except AttributeError:
-            if isinstance(xml,basestring):
+            if isinstance(xml,str):
                 try:
                     xml = minidom.parseString(xml)
+                except Exception, e:
+                    raise XmlError(e)
+            elif isinstance(xml,unicode):
+                try:
+                    #  Try to grad the "encoding" attribute from the XML.
+                    #  It probably won't exist, so default to utf8.
+                    encoding = _XML_ENCODING_RE.match(xml)
+                    if encoding is None:
+                        encoding = "utf8"
+                    else:
+                        encoding = encoding.group(1)
+                    xml = minidom.parseString(xml.encode(encoding))
                 except Exception, e:
                     raise XmlError(e)
             elif hasattr(xml,"read"):
@@ -529,14 +550,17 @@ class Model(object):
             err = err % (cls.__name__,)
             raise ParseError(err)
         if cls.meta.case_sensitive:
-            equals = (lambda a,b: a == b)
+            if node.localName != cls.meta.tagname:
+                err = "Class '%s' got tag '%s' (expected '%s')"
+                err = err % (cls.__name__,node.localName,
+                             cls.meta.tagname)
+                raise ParseError(err)
         else:
-            equals = (lambda a,b: a.lower() == b.lower())
-        if not equals(node.localName, cls.meta.tagname):
-            err = "Class '%s' got tag '%s' (expected '%s')"
-            err = err % (cls.__name__,node.localName,
-                         cls.meta.tagname)
-            raise ParseError(err)
+            if node.localName.lower() != cls.meta.tagname.lower():
+                err = "Class '%s' got tag '%s' (expected '%s')"
+                err = err % (cls.__name__,node.localName,
+                             cls.meta.tagname)
+                raise ParseError(err)
         if cls.meta.namespace:
             if node.namespaceURI != cls.meta.namespace:
                 err = "Class '%s' got namespace '%s' (expected '%s')"
