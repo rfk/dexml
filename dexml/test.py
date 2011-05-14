@@ -4,6 +4,7 @@
 
 """
 
+import sys
 import os
 import os.path
 import difflib
@@ -14,6 +15,11 @@ from StringIO import StringIO
 
 import dexml
 from dexml import fields
+
+
+def b(raw):
+    """Compatability wrapper for b"string" syntax."""
+    return raw.encode("ascii")
 
 
 def model_fields_equal(m1,m2):
@@ -33,8 +39,13 @@ def model_fields_equal(m1,m2):
 class TestDexmlDocstring(unittest.TestCase):
 
     def test_docstring(self):
-        """Test dexml docstrings"""
-        assert doctest.testmod(dexml)[0] == 0
+        """Test dexml docstrings
+
+        We don't do this on python3 because of the many small ways in
+        which the output has changed in that version.
+        """
+        if sys.version_info < (3,):
+            assert doctest.testmod(dexml)[0] == 0
 
     def test_readme_matches_docstring(self):
         """Ensure that the README is in sync with the docstring.
@@ -90,13 +101,13 @@ class TestDexml(unittest.TestCase):
         h = hello()
         self.assertEquals(h.render(),'<?xml version="1.0" ?><hello />')
         self.assertEquals(h.render(fragment=True),"<hello />")
-        self.assertEquals(h.render(encoding="utf8"),'<?xml version="1.0" encoding="utf8" ?><hello />')
-        self.assertEquals(h.render(encoding="utf8",fragment=True),"<hello />")
+        self.assertEquals(h.render(encoding="utf8"),b('<?xml version="1.0" encoding="utf8" ?><hello />'))
+        self.assertEquals(h.render(encoding="utf8",fragment=True),b("<hello />"))
 
         self.assertEquals(h.render(),"".join(h.irender()))
         self.assertEquals(h.render(fragment=True),"".join(h.irender(fragment=True)))
-        self.assertEquals(h.render(encoding="utf8"),"".join(h.irender(encoding="utf8")))
-        self.assertEquals(h.render(encoding="utf8",fragment=True),"".join(h.irender(encoding="utf8",fragment=True)))
+        self.assertEquals(h.render(encoding="utf8"),b("").join(h.irender(encoding="utf8")))
+        self.assertEquals(h.render(encoding="utf8",fragment=True),b("").join(h.irender(encoding="utf8",fragment=True)))
 
 
     def test_errors_on_malformed_xml(self):
@@ -146,13 +157,13 @@ class TestDexml(unittest.TestCase):
         h = hello()
         self.assertEquals(h.render(),u'<?xml version="1.0" ?><hel\N{GREEK SMALL LETTER LAMDA}o />')
         self.assertEquals(h.render(fragment=True),u"<hel\N{GREEK SMALL LETTER LAMDA}o />")
-        self.assertEquals(h.render(encoding="utf8"),'<?xml version="1.0" encoding="utf8" ?><hel\xce\xbbo />')
-        self.assertEquals(h.render(encoding="utf8",fragment=True),"<hel\xce\xbbo />")
+        self.assertEquals(h.render(encoding="utf8"),u'<?xml version="1.0" encoding="utf8" ?><hel\N{GREEK SMALL LETTER LAMDA}o />'.encode("utf8"))
+        self.assertEquals(h.render(encoding="utf8",fragment=True),u"<hel\N{GREEK SMALL LETTER LAMDA}o />".encode("utf8"))
 
         self.assertEquals(h.render(),"".join(h.irender()))
         self.assertEquals(h.render(fragment=True),"".join(h.irender(fragment=True)))
-        self.assertEquals(h.render(encoding="utf8"),"".join(h.irender(encoding="utf8")))
-        self.assertEquals(h.render(encoding="utf8",fragment=True),"".join(h.irender(encoding="utf8",fragment=True)))
+        self.assertEquals(h.render(encoding="utf8"),b("").join(h.irender(encoding="utf8")))
+        self.assertEquals(h.render(encoding="utf8",fragment=True),b("").join(h.irender(encoding="utf8",fragment=True)))
 
 
     def test_model_meta_attributes(self):

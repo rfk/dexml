@@ -65,16 +65,29 @@ classes for more details:
 
 __ver_major__ = 0
 __ver_minor__ = 4
-__ver_patch__ = 1
+__ver_patch__ = 2
 __ver_sub__ = ""
 __version__ = "%d.%d.%d%s" % (__ver_major__,__ver_minor__,__ver_patch__,__ver_sub__)
                               
 
+import sys
 import re
 import copy
 from xml.dom import minidom
 
 from dexml import fields
+
+
+if sys.version_info >= (3,):
+    str = str                  #pragma: no cover
+    unicode = str              #pragma: no cover
+    bytes = bytes              #pragma: no cover
+    basestring = (str,bytes)   #pragma: no cover
+else:
+    str = str                  #pragma: no cover
+    unicode = unicode          #pragma: no cover
+    bytes = str                #pragma: no cover
+    basestring = basestring    #pragma: no cover
 
 
 class Error(Exception):
@@ -412,7 +425,8 @@ class Model(object):
             nsmap = {}
         if not fragment:
             if encoding:
-                yield '<?xml version="1.0" encoding="%s" ?>' % (encoding,)
+                decl = '<?xml version="1.0" encoding="%s" ?>' % (encoding,)
+                yield decl.encode(encoding)
             else:
                 yield '<?xml version="1.0" ?>'
         if encoding:
@@ -510,7 +524,7 @@ class Model(object):
         try:
             ntype = xml.nodeType
         except AttributeError:
-            if isinstance(xml,str):
+            if isinstance(xml,bytes):
                 try:
                     xml = minidom.parseString(xml)
                 except Exception, e:
