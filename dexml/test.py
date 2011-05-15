@@ -114,9 +114,9 @@ class TestDexml(unittest.TestCase):
         class hello(dexml.Model):
             pass
 
-        self.assertRaises(dexml.XmlError,hello.parse,"<hello>")
-        self.assertRaises(dexml.XmlError,hello.parse,"<hello></helo>")
-        self.assertRaises(dexml.XmlError,hello.parse,"")
+        self.assertRaises(dexml.XmlError,hello.parse,b("<hello>"))
+        self.assertRaises(dexml.XmlError,hello.parse,b("<hello></helo>"))
+        self.assertRaises(dexml.XmlError,hello.parse,b(""))
 
         self.assertRaises(dexml.XmlError,hello.parse,u"")
         self.assertRaises(dexml.XmlError,hello.parse,u"<hello>")
