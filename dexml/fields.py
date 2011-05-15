@@ -522,7 +522,7 @@ class List(Field):
         if not self.minlength and not self.tagname:
             self.required = False
         if self.minlength and not self.required:
-            raise ValueError("Dict must be required if it has minlength")
+            raise ValueError("List must be required if it has minlength")
 
     def _get_field(self):
         field = self.__dict__["field"]
