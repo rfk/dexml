@@ -1,4 +1,9 @@
 
+v0.4.3
+
+  * Implemented a basic project website, with tutorial and API docs.
+
+
 v0.4.2
 
   * Got 100% test coverage on all target python versions.  Many edge-case

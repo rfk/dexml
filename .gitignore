@@ -7,3 +7,6 @@ dist/
 .coverage
 cover
 .tox
+website/deploy/
+website/.hyde_deps
+*.egg-info
