@@ -478,6 +478,15 @@ class TestDexml(unittest.TestCase):
         pets.meta.ignore_unknown_elements = False
         self.assertRaises(dexml.ParseError, pets.parse, "<pets><person name='ryan' age='26' /><pet name='riley' species='dog' /><reward date='February 23, 2010'/><reward date='November 10, 2009' /></pets>")
 
+    def test_list_field_tagname(self):
+        """Test List(tagname="items",required=True)."""
+        class obj(dexml.Model):
+            items = fields.List(fields.String(tagname="item"),tagname="items")
+        o = obj(items=[])
+        self.assertEquals(o.render(fragment=True), '<obj><items /></obj>')
+        self.assertRaises(dexml.ParseError,obj.parse,'<obj />')
+        o = obj.parse('<obj><items /></obj>')
+        self.assertEquals(o.items,[])
 
     def test_list_field_sanity_checks(self):
         class GreedyField(fields.Field):
@@ -551,6 +560,13 @@ class TestDexml(unittest.TestCase):
         self.assertEquals(o.items['item2'].attr, 'val2')
         del o.items['item2']
         self.assertEquals(o.render(fragment = True), '<obj><items><item name="item1"><attr>val1</attr></item></items></obj>')
+
+        # Test that wrapper tags are still required even for empty fields
+        o = obj(items={})
+        self.assertEquals(o.render(fragment=True), '<obj><items /></obj>')
+        self.assertRaises(dexml.ParseError,obj.parse,'<obj />')
+        o = obj.parse('<obj><items /></obj>')
+        self.assertEquals(o.items,{})
 
         from collections import defaultdict
         class _dict(defaultdict):

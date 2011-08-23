@@ -502,9 +502,8 @@ class List(Field):
 
       <MyModel><list><item>one</item><item>two</item></list></MyModel>
 
-    This wrapper tag is rendered if the list is not empty and is transparent
-    for list item access.
-
+    This wrapper tag is always rendered, even if the list is empty.  It is
+    transparently removed when parsing.
     """
 
     class arguments(Field.arguments):
@@ -599,7 +598,8 @@ class List(Field):
         try:
             data = chunks.next()
         except StopIteration:
-            pass
+            if self.tagname and self.required:
+                yield "<%s />" % (self.tagname,)
         else:
             if self.tagname:
                 yield "<%s>" % (self.tagname,)
@@ -660,8 +660,8 @@ class Dict(Field):
       print(obj2.name)
       print(mymodel.render(fragment = True))
 
-    The wrapper tag is rendered if the dict is not empty, and is transparent
-    for dict item access.
+    This wrapper tag is always rendered, even if the dict is empty.  It is
+    transparently removed when parsing.
     """
 
     class arguments(Field.arguments):
@@ -759,7 +759,10 @@ class Dict(Field):
             raise dexml.RenderError("too many items")
         if self.tagname:
             children = "".join(data for item in items.values() for data in self.field.render_children(obj,item,nsmap))
-            if children:
+            if not children:
+                if self.required:
+                    yield "<%s />" % (self.tagname,)
+            else:
                 yield children.join(('<%s>'%self.tagname, '</%s>'%self.tagname))
         else:
             for item in items.values():

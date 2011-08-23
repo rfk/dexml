@@ -1,4 +1,17 @@
 
+v0.5.0
+
+  * Clean up and clarify handling of wrapper tags for List/Dict fields.
+    When the "tagname" property is specified:
+      * If the field is required then the wrapper tag is required,
+        even if it has no contents.
+      * If the field is required then the wrapper tag is always rendered,
+        even if it has no contents.
+      * If the field is not required then the wrapper tag can be elided,
+        and will not be rendered when the collection is empty.
+    Behaviour of List/Dict without a wrapper tag is unchanged.
+
+
 v0.4.2
 
   * Got 100% test coverage on all target python versions.  Many edge-case

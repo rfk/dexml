@@ -334,6 +334,8 @@ class Model(object):
                     cur_field_idx = idx
                     break
                 if res is PARSE_CHILDREN:
+                    if field not in fields_found:
+                        fields_found.append(field)
                     self._parse_children_ordered(child,[field],fields_found)
                     cur_field_idx = idx
                     break
@@ -364,6 +366,8 @@ class Model(object):
                         fields_found.append(field)
                     break
                 if res is PARSE_CHILDREN:
+                    if field not in fields_found:
+                        fields_found.append(field)
                     self._parse_children_unordered(child,[field],fields_found)
                     break
                 idx += 1
@@ -531,7 +535,7 @@ class Model(object):
                     raise XmlError(e)
             elif isinstance(xml,unicode):
                 try:
-                    #  Try to grad the "encoding" attribute from the XML.
+                    #  Try to grab the "encoding" attribute from the XML.
                     #  It probably won't exist, so default to utf8.
                     encoding = _XML_ENCODING_RE.match(xml)
                     if encoding is None:
