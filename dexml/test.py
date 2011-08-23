@@ -564,9 +564,12 @@ class TestDexml(unittest.TestCase):
         # Test that wrapper tags are still required even for empty fields
         o = obj(items={})
         self.assertEquals(o.render(fragment=True), '<obj><items /></obj>')
-        self.assertRaises(dexml.ParseError,obj.parse,'<obj />')
         o = obj.parse('<obj><items /></obj>')
         self.assertEquals(o.items,{})
+        self.assertRaises(dexml.ParseError,obj.parse,'<obj />')
+        obj.items.required = False
+        self.assertEquals(o.render(fragment=True), '<obj />')
+        obj.items.required = True
 
         from collections import defaultdict
         class _dict(defaultdict):

@@ -571,8 +571,7 @@ class List(Field):
     def parse_done(self,obj):
         items = self.__get__(obj)
         if self.minlength is not None and len(items) < self.minlength:
-            if self.required or len(items) != 0:
-                raise dexml.ParseError("Field '%s': not enough items" % (self.field_name,))
+            raise dexml.ParseError("Field '%s': not enough items" % (self.field_name,))
         if self.maxlength is not None and len(items) > self.maxlength:
             raise dexml.ParseError("Field '%s': too many items" % (self.field_name,))
 
@@ -590,9 +589,8 @@ class List(Field):
                 for data in self.field.render_children(obj,item,nsmap):
                     yield data
             if self.minlength is not None and num_items < self.minlength:
-                if self.required:
-                    msg = "Field '%s': not enough items" % (self.field_name,)
-                    raise dexml.RenderError(msg)
+                msg = "Field '%s': not enough items" % (self.field_name,)
+                raise dexml.RenderError(msg)
         chunks = child_chunks()
         #  Render each chunk, but suppress the wrapper tag if there's no data.
         try:
@@ -746,15 +744,13 @@ class Dict(Field):
     def parse_done(self, obj):
         items = self.__get__(obj)
         if self.minlength is not None and len(items) < self.minlength:
-            if self.required or len(items) != 0:
-                raise dexml.ParseError("Field '%s': not enough items" % (self.field_name,))
+            raise dexml.ParseError("Field '%s': not enough items" % (self.field_name,))
         if self.maxlength is not None and len(items) > self.maxlength:
             raise dexml.ParseError("Field '%s': too many items" % (self.field_name,))
 
     def render_children(self, obj, items, nsmap):
         if self.minlength is not None and len(items) < self.minlength:
-            if self.required and len(items) > 0:
-                raise dexml.RenderError("Field '%s': not enough items" % (self.field_name,))
+            raise dexml.RenderError("Field '%s': not enough items" % (self.field_name,))
         if self.maxlength is not None and len(items) > self.maxlength:
             raise dexml.RenderError("too many items")
         if self.tagname:
