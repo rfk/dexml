@@ -6,4 +6,8 @@ build/
 dist/
 .coverage
 cover
+htmlcov
 .tox
+website/deploy/
+website/.hyde_deps
+*.egg-info

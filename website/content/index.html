@@ -1,0 +1,47 @@
+---
+title: dexml
+default_block:
+---
+
+{% block page_meta %}
+<link rel="alternate" title="dexml | News | Atom Feed" href="http://packages.python.org/dexml/news/feeds/atom.xml" type="application/atom+xml" />
+{% endblock %}
+
+
+{% from "macros.j2" import render_excerpt with context  %}
+{% block page_content %}
+
+<p>Dexml is a dead-simple object-XML mapper for Python.</p>
+
+<p>Loosely inspired by Django's ORM, dexml takes the obvious mapping between
+XML tags and Python objects and lets you capture that as cleanly as possible.
+You write some simple class definitions to define your models and their
+attributes, and dexml handles the round-tripping to and from XML.</p>
+
+<p>To get started, check out the comprehensive <a href="./tutorial.html">tutorial</a>, the <a href="./faq.html">FAQ</a>, or the auto-generated <a href="./api/dexml.html">API listing</a>.<br />
+Or if you just want to get up and running in a hurry, here's a quick sample of dexml in action:</p>
+
+{% syntax python %}
+>>> import dexml
+>>> from dexml import fields
+>>> 
+>>> class Person(dexml.Model):
+...  name = fields.String()
+...  age = fields.Integer(tagname="age")
+...
+>>> p = Person(name="Handsome B. Wonderful",age=36)
+>>> p.render()
+'<?xml version="1.0" ?><Person name="Handsome B. Wonderful"><age>36</age></Person>'
+{% endsyntax %}
+
+<hr />
+
+{% for res in resource.node.walk_resources_sorted_by_time()[:2] %}
+    {{ render_excerpt(res) }}
+    <hr />
+{% endfor %}
+
+<p><a href="./news/">Older project news...</a></p>
+
+ {% endblock %}
+

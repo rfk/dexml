@@ -1,6 +1,7 @@
 
 v0.5.0
 
+  * Implemented a basic project website, with tutorial and API docs.
   * Clean up and clarify handling of wrapper tags for List/Dict fields.
     When the "tagname" property is specified:
       * If the field is required then the wrapper tag is required,
