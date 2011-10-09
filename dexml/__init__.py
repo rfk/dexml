@@ -388,7 +388,7 @@ class Model(object):
                     err = "unknown attribute: %s" % (node.name,)
                     raise ParseError(err)
 
-    def render(self,encoding=None,fragment=False,nsmap=None):
+    def render(self,encoding=None,fragment=False,pretty=False,nsmap=None):
         """Produce XML from this model's instance data.
 
         A unicode string will be returned if any of the objects contain
@@ -410,6 +410,8 @@ class Model(object):
                 data.append('<?xml version="1.0" ?>')
         data.extend(self._render(nsmap))
         xml = "".join(data)
+        if pretty:
+            xml = minidom.parseString(xml).toprettyxml()
         if encoding:
             xml = xml.encode(encoding)
         return xml
