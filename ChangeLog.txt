@@ -1,7 +1,8 @@
 
 v0.5.0
 
-  * Implemented a basic project website, with tutorial and API docs.
+  * Implemented a basic project website, with beginnings of tutorial
+    and API docs.
   * Implement Model.render(pretty=True) for pretty-printed XML output.
   * Fix rendering of unicode String fields; thanks @saltycrane.
   * Clean up and clarify handling of wrapper tags for List/Dict fields.
