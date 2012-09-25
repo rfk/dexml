@@ -165,6 +165,17 @@ class TestDexml(unittest.TestCase):
         self.assertEquals(h.render(encoding="utf8"),b("").join(h.irender(encoding="utf8")))
         self.assertEquals(h.render(encoding="utf8",fragment=True),b("").join(h.irender(encoding="utf8",fragment=True)))
 
+    def test_unicode_string_field(self):
+        """Test a dexml.Model class with a unicode string field."""
+        class Person(dexml.Model):
+            name = fields.String()
+
+        p = Person.parse(u"<Person name='hel\N{GREEK SMALL LETTER LAMDA}o'/>")
+        self.assertEquals(p.name, u"hel\N{GREEK SMALL LETTER LAMDA}o")
+
+        p = Person()
+        p.name = u"hel\N{GREEK SMALL LETTER LAMDA}o"
+        self.assertEquals(p.render(encoding="utf8"), u'<?xml version="1.0" encoding="utf8" ?><Person name="hel\N{GREEK SMALL LETTER LAMDA}o" />'.encode("utf8"))
 
     def test_model_meta_attributes(self):
         class hello(dexml.Model):
