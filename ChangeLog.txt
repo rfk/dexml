@@ -1,6 +1,11 @@
 
 v0.5.0
 
+  * Fix a broken setup.py file.
+
+
+v0.5.0
+
   * Implemented a basic project website, with beginnings of tutorial
     and API docs.
   * Implement Model.render(pretty=True) for pretty-printed XML output.
