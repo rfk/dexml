@@ -412,6 +412,13 @@ class Model(object):
         xml = "".join(data)
         if pretty:
             xml = minidom.parseString(xml).toprettyxml()
+            if fragment:
+                # Since the `fragment` flag is set, we assume that the user
+                # wants the header removed no matter what.
+                # Hack for removing the `<?xml version="1.0"?>` header that
+                # minidom adds when pretty printing.
+                line_break_position = xml.find('\n') + 1
+                xml = xml[line_break_position:]
         if encoding:
             xml = xml.encode(encoding)
         return xml
