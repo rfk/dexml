@@ -103,8 +103,8 @@ class TestDexml(unittest.TestCase):
         self.assertEquals(h.render(fragment=True),"<hello />")
         self.assertEquals(h.render(pretty=True), '<?xml version="1.0" ?>\n<hello/>\n')
         self.assertEquals(h.render(fragment=True, pretty=True), "<hello/>\n")
-        self.assertEquals(h.render(encoding="utf8", pretty=True), b('<?xml version="1.0" encoding="utf8" ?>\n<hello/>\n'))
         self.assertEquals(h.render(encoding="utf8"),b('<?xml version="1.0" encoding="utf8" ?><hello />'))
+        self.assertEquals(h.render(encoding="utf8", pretty=True), b('<?xml version="1.0" encoding="utf8" ?>\n<hello/>\n'))
         self.assertEquals(h.render(encoding="utf8",fragment=True),b("<hello />"))
         self.assertEquals(h.render(encoding="utf8", fragment=True, pretty=True), b("<hello/>\n"))
 
