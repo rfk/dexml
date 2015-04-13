@@ -1029,3 +1029,63 @@ class TestDexml(unittest.TestCase):
         self.assertRaises(dexml.ParseError,Notebook.parse,"<Notebook><wtf /><notes><note>one</note><note>two</note><wtf /></notes></Notebook>")
         self.assertRaises(dexml.ParseError,Notebook.parse,"<Notebook tag='home'><notes><note>one</note><note>two</note></notes></Notebook>")
 
+
+class TestListField(unittest.TestCase):
+    class F(dexml.Model):
+        class meta:
+            tagname = 'f'
+        name = fields.String(tagname="name")
+
+    def test_empty(self):
+        class obj(dexml.Model):
+            fs = fields.List(fields.Model(self.F))
+
+        o = obj()
+        self.assertEqual(o.render(fragment=True), "<obj />")
+
+    def test_simple(self):
+        class obj(dexml.Model):
+            fs = fields.List(fields.Model(self.F))
+
+        o = obj()
+        o.fs.append(self.F(name="N1"))
+        self.assertEqual(o.render(fragment=True), "<obj><f><name>N1</name></f></obj>")
+
+    def test_empty_with_tagname(self):
+        class obj(dexml.Model):
+            fs = fields.List(fields.Model(self.F), tagname="L")
+
+        o = obj()
+        self.assertEqual(o.render(fragment=True), "<obj><L /></obj>")
+
+    def test_tagname(self):
+        class obj(dexml.Model):
+            fs = fields.List(fields.Model(self.F), tagname="L")
+
+        o = obj()
+        o.fs.append(self.F(name="N1"))
+        self.assertEqual(o.render(fragment=True), "<obj><L><f><name>N1</name></f></L></obj>")
+
+    def test_model_tagname(self):
+        class obj(dexml.Model):
+            fs = fields.List(fields.Model(self.F, tagname="FF"))
+
+        o = obj()
+        o.fs.append(self.F(name="N1"))
+        self.assertEqual(o.render(fragment=True), "<obj><FF><name>N1</name></FF></obj>")
+
+    def test_list_and_model_tagnames(self):
+        class obj(dexml.Model):
+            fs = fields.List(fields.Model(self.F, tagname="FF"), tagname="L")
+
+        o = obj()
+        o.fs.append(self.F(name="N1"))
+        self.assertEqual(o.render(fragment=True), "<obj><L><FF><name>N1</name></FF></L></obj>")
+
+    def test_strings(self):
+        class obj(dexml.Model):
+            fs = fields.List(fields.String(tagname="val"))
+
+        o = obj()
+        o.fs.append("s1")
+        self.assertEqual(o.render(fragment=True), "<obj><val>s1</val></obj>")
