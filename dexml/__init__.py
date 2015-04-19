@@ -68,7 +68,7 @@ __ver_minor__ = 5
 __ver_patch__ = 1
 __ver_sub__ = ""
 __version__ = "%d.%d.%d%s" % (__ver_major__,__ver_minor__,__ver_patch__,__ver_sub__)
-                              
+
 
 import sys
 import re
@@ -402,16 +402,26 @@ class Model(object):
         if nsmap is None:
             nsmap = {}
         data = []
+        header = '<?xml version="1.0" ?>'
+        if encoding:
+            header = '<?xml version="1.0" encoding="%s" ?>' % (encoding,)
         if not fragment:
-            if encoding:
-                s = '<?xml version="1.0" encoding="%s" ?>' % (encoding,)
-                data.append(s)
-            else:
-                data.append('<?xml version="1.0" ?>')
+            data.append(header)
+
         data.extend(self._render(nsmap))
         xml = "".join(data)
         if pretty:
             xml = minidom.parseString(xml).toprettyxml()
+            # Hack for removing the `<?xml version="1.0"?>` header that
+            # minidom adds when pretty printing.
+            line_break_position = xml.find('\n') + 1
+            headless_xml = xml[line_break_position:]
+            if fragment:
+                xml = headless_xml
+            elif encoding:
+                # Minidom also removes the header (or just the `encoding` key)
+                # if it is present
+                xml = header + '\n' + headless_xml
         if encoding:
             xml = xml.encode(encoding)
         return xml
