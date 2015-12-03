@@ -1,4 +1,9 @@
 
+v0.5.1
+
+  * Handle list tagnames, and field tagnames within a list.
+
+
 v0.5.0
 
   * Fix a broken setup.py file.
