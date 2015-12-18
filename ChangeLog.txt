@@ -1,4 +1,9 @@
 
+Pending
+
+  * Revert ability to specify 'tagname' on a fields.Model.
+
+
 v0.5.1
 
   * Handle list tagnames, and field tagnames within a list.

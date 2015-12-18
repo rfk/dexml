@@ -98,7 +98,7 @@ class Field(object):
         """Render any attributes that this field manages."""
         return []
 
-    def render_children(self,obj,nsmap,val):
+    def render_children(self,obj,val,nsmap):
         """Render any child nodes that this field manages."""
         return []
 
@@ -589,8 +589,6 @@ class List(Field):
                 if self.maxlength is not None and num_items > self.maxlength:
                     msg = "Field '%s': too many items" % (self.field_name,)
                     raise dexml.RenderError(msg)
-                if hasattr(item, "meta") and self.field.tagname:
-                    item.meta.tagname = self.field.tagname
                 for data in self.field.render_children(obj,item,nsmap):
                     yield data
             if self.minlength is not None and num_items < self.minlength:

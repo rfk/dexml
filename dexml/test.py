@@ -1033,7 +1033,7 @@ class TestDexml(unittest.TestCase):
 class TestListField(unittest.TestCase):
     class F(dexml.Model):
         class meta:
-            tagname = 'f'
+            tagname = "f"
         name = fields.String(tagname="name")
 
     def test_empty(self):
@@ -1067,19 +1067,24 @@ class TestListField(unittest.TestCase):
         self.assertEqual(o.render(fragment=True), "<obj><L><f><name>N1</name></f></L></obj>")
 
     def test_model_tagname(self):
+        class FF(self.F):
+            pass
         class obj(dexml.Model):
-            fs = fields.List(fields.Model(self.F, tagname="FF"))
+            fs = fields.List(fields.Model(FF))
 
         o = obj()
-        o.fs.append(self.F(name="N1"))
+        o.fs.append(FF(name="N1"))
         self.assertEqual(o.render(fragment=True), "<obj><FF><name>N1</name></FF></obj>")
 
     def test_list_and_model_tagnames(self):
+        class FF(self.F):
+            class meta:
+                tagname = "FF"
         class obj(dexml.Model):
-            fs = fields.List(fields.Model(self.F, tagname="FF"), tagname="L")
+            fs = fields.List(fields.Model(FF), tagname="L")
 
         o = obj()
-        o.fs.append(self.F(name="N1"))
+        o.fs.append(FF(name="N1"))
         self.assertEqual(o.render(fragment=True), "<obj><L><FF><name>N1</name></FF></L></obj>")
 
     def test_strings(self):
