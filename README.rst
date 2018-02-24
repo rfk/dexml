@@ -1,4 +1,13 @@
 
+Status: Unmaintained
+====================
+
+.. image:: http://unmaintained.tech/badge.svg
+     :target: http://unmaintained.tech/
+     :alt: No Maintenance Intended
+
+I am `no longer actively maintaining this project <https://rfk.id.au/blog/entry/archiving-open-source-projects/>`_.
+
 
 dexml:  a dead-simple Object-XML mapper for Python
 ==================================================
